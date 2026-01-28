@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+body {
+  background-color: #F5F5DC;
+  color: #3E2723;
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+
+@layer utilities {
+  /* The Gold-Leaf Metallic Shine */
+  .text-gold-leaf {
+    background: linear-gradient(
+      to right, 
+      #bf953f 20%, 
+      #fcf6ba 40%, 
+      #b38728 50%, 
+      #fcf6ba 60%, 
+      #bf953f 80%
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shine 5s linear infinite;
+  }
+
+  @keyframes shine {
+    to { background-position: 200% center; }
+  }
+
+  /* The Low-Fluorescent Backlight Glow */
+  .glow-backlight {
+    text-shadow: 0 0 15px rgba(139, 69, 13, 0.3), 0 0 30px rgba(139, 69, 13, 0.1);
+  }
+
+  /* Custom Quote Shadow for Readability */
+  .quote-shadow {
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  }
+}
+
+
+/* Optimized for Legibility on Busy Backgrounds */
+.quote-legible {
+  color: #F5F5DC; /* Cream */
+  /* Tight dark shadow for sharpness + Soft brown glow for depth */
+  text-shadow: 
+    1px 1px 2px rgba(0, 0, 0, 0.8), 
+    0 0 15px rgba(62, 39, 35, 0.8),
+    0 0 30px rgba(62, 39, 35, 0.4);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}

@@ -1,6 +1,17 @@
 // server/index.js
 const pool = require('./config/db'); // Import the database connection
 const adminRoutes = require('./routes/adminRoutes');
+const rateLimit = require('express-rate-limit');
+
+// Allow max 100 requests per 15 minutes from the same IP
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, 
+    max: 100,
+    message: "Too many requests from this IP, please try again after 15 minutes"
+});
+
+// Apply it to all requests
+app.use(limiter);
 // Import the necessary ingredients
 const express = require('express');
 const cors = require('cors');
