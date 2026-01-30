@@ -1,17 +1,40 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import scribbleBg from '../assets/scribble-bg.png';
 
 const AdminLogin = () => {
+  const [formData, setFormData] = useState({ email: '', password: '', staffKey: '' });
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleAdminLogin = (e) => {
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleAdminLogin = async (e) => {
     e.preventDefault();
-    login('lecturer'); // Unlock Staff Permissions
-    navigate('/dashboard/lecturer'); 
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email, password: formData.password })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.user.role === 'lecturer') {
+        login(data.user, data.token);
+        navigate('/dashboard/lecturer'); 
+      } else if (data.user && data.user.role !== 'lecturer') {
+        alert("Access Denied: You do not have Staff Clearance.");
+      } else {
+        alert(data.message || "Authentication failed");
+      }
+    } catch (err) {
+      console.error("Admin Login Error:", err);
+    }
   };
 
   return (
@@ -30,9 +53,9 @@ const AdminLogin = () => {
         </div>
 
         <form onSubmit={handleAdminLogin} className="space-y-5">
-          <input required type="email" className="w-full bg-timber-200/50 border-2 border-timber-800 p-3 rounded-lg font-bold outline-none focus:bg-white transition-all" placeholder="admin@rootle.edu" />
-          <input required type="password" className="w-full bg-timber-200/50 border-2 border-timber-800 p-3 rounded-lg font-bold outline-none" placeholder="••••••••••••" />
-          <input required type="password" className="w-full bg-red-50 border-2 border-red-900 p-3 rounded-lg font-mono text-red-900 placeholder:text-red-300 outline-none" placeholder="XXX-STAFF-KEY" />
+          <input required type="email" name="email" onChange={handleChange} className="w-full bg-timber-200/50 border-2 border-timber-800 p-3 rounded-lg font-bold outline-none focus:bg-white transition-all" placeholder="admin@rootle.edu" />
+          <input required type="password" name="password" onChange={handleChange} className="w-full bg-timber-200/50 border-2 border-timber-800 p-3 rounded-lg font-bold outline-none" placeholder="••••••••••••" />
+          <input required type="password" name="staffKey" onChange={handleChange} className="w-full bg-red-50 border-2 border-red-900 p-3 rounded-lg font-mono text-red-900 placeholder:text-red-300 outline-none" placeholder="XXX-STAFF-KEY" />
 
           <button type="submit" className="w-full bg-red-900 text-[#F5F5DC] py-4 rounded-xl font-display font-black text-lg hover:bg-timber-900 hover:scale-[1.02] transition-all duration-300 mt-6 shadow-xl border-2 border-red-900 hover:border-timber-500">
             AUTHENTICATE

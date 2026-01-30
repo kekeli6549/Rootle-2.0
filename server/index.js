@@ -1,69 +1,61 @@
 // server/index.js
-const pool = require('./config/db'); // Import the database connection
-const adminRoutes = require('./routes/adminRoutes');
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const path = require('path');
 const rateLimit = require('express-rate-limit');
 
-// Allow max 100 requests per 15 minutes from the same IP
+
+// 1. Initialize the app FIRST
+const app = express();
+
+// 2. Import routes
+const pool = require('./config/db'); 
+const authRoutes = require('./routes/authRoutes');
+const resourceRoutes = require('./routes/resourceRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+
+// 3. Setup Limiter
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, 
     max: 100,
     message: "Too many requests from this IP, please try again after 15 minutes"
 });
 
-// Apply it to all requests
+// --- MIDDLEWARE ---
 app.use(limiter);
-// Import the necessary ingredients
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
-const path = require('path');
-require('dotenv').config(); // Load environment variables
-const authRoutes = require('./routes/authRoutes');
-const resourceRoutes = require('./routes/resourceRoutes');
-// Initialize the app
-const app = express();
+app.use(helmet({
+    crossOriginResourcePolicy: false, // Allows the browser to load files from your /uploads folder
+}));
 
-// --- MIDDLEWARE (The Gatekeepers) ---
-
-// 1. Security headers (Helmet makes it harder for hackers to exploit headers)
-app.use(helmet());
-
-// 2. Cross-Origin Resource Sharing (Allows React to talk to this server)
 app.use(cors());
-
-// 3. Parser (Allows the server to read JSON data sent from the frontend)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// 4. Logger (Shows us request details in the terminal)
 app.use(morgan('dev')); 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// --- ROUTES (The Pathways) ---
-// We will add the actual routes later. For now, let's test if it works.
+// --- ROUTES ---
+
+// Health Check
 app.get('/', (req, res) => {
     res.json({ message: "Rootle API is running smoothly, Chief!" });
 });
+
+// Feature Routes
 app.use('/api/auth', authRoutes);
-// --- ERROR HANDLING (The Safety Net) ---
-// If something breaks, we don't want the app to crash silently.
+app.use('/api/resources', resourceRoutes);
+app.use('/api/admin', adminRoutes);
+
+// --- ERROR HANDLING ---
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).send('Something broke on the server side!');
 });
-app.use('/api/resources', resourceRoutes);
-
-app.get('/', (req, res) => {
-    res.json({ message: "Rootle API is running smoothly, Chief!" });
-});
-
-app.use('/api/admin', adminRoutes);
-
 
 // --- SERVER START ---
 const PORT = process.env.PORT || 5000;
-
 app.listen(PORT, () => {
     console.log(`\n🚀 Server is running on port ${PORT}`);
     console.log(`👉 Test it here: http://localhost:${PORT}`);

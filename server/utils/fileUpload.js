@@ -1,33 +1,47 @@
-// server/utils/fileUpload.js
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 
-// 1. Where to store the files and what to name them
+const uploadDir = 'uploads/';
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, 'uploads/'); // Save in the uploads folder
+        cb(null, uploadDir); 
     },
     filename: (req, file, cb) => {
-        // Give it a unique name: Date + Original Name
-        cb(null, `${Date.now()}-${file.originalname}`);
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + path.extname(file.originalname));
     }
 });
 
-// 2. Filter: Only allow certain file types
 const fileFilter = (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|pdf|docx|pptx/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    
-    if (extname) {
+    // Added support for Excel/Spreadsheets
+    const allowedExtensions = /pdf|docx|pptx|xlsx|jpg|jpeg|png/;
+    const allowedMimetypes = [
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'image/jpeg',
+        'image/png'
+    ];
+
+    const isExtValid = allowedExtensions.test(path.extname(file.originalname).toLowerCase());
+    const isMimeValid = allowedMimetypes.includes(file.mimetype);
+
+    if (isExtValid && isMimeValid) {
         return cb(null, true);
     } else {
-        cb(new Error('Error: Only Documents and Images are allowed!'));
+        cb(new Error('Invalid format! PDF, DOCX, PPTX, XLSX and Images only.'));
     }
 };
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB Limit
+    limits: { fileSize: 50 * 1024 * 1024 }, 
     fileFilter: fileFilter
 });
 

@@ -1,12 +1,16 @@
-// server/routes/resourceRoutes.js
 const express = require('express');
 const router = express.Router();
 const resourceController = require('../controllers/resourceController');
-const protect = require('../middleware/authMiddleware'); // Our Bouncer
-const upload = require('../utils/fileUpload'); // Our Post Office
+const protect = require('../middleware/authMiddleware');
+const upload = require('../utils/fileUpload');
 
-// Route: POST /api/resources/upload
-// Note how we use 'protect' first to make sure they are logged in!
 router.post('/upload', protect, upload.single('file'), resourceController.uploadResource);
+router.get('/', protect, resourceController.getAllResources);
+
+// NEW: Soft delete / Deletion request
+router.delete('/:id', protect, resourceController.requestDeletion);
+
+// Track "Heat"
+router.post('/download/:id', protect, resourceController.incrementDownload);
 
 module.exports = router;

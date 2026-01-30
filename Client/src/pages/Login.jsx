@@ -9,10 +9,32 @@ const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogin = (e) => {
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleLogin = async (e) => {
     e.preventDefault();
-    login('student'); // Unlock Student Permissions
-    navigate('/dashboard/student'); 
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // We pass the user object and token to our updated AuthContext
+        login(data.user, data.token); 
+        navigate('/dashboard/student'); 
+      } else {
+        alert(data.message || "Invalid Credentials");
+      }
+    } catch (err) {
+      console.error("Login Error:", err);
+      alert("Server is offline, Chief!");
+    }
   };
 
   return (
@@ -30,11 +52,11 @@ const Login = () => {
         <form onSubmit={handleLogin} className="space-y-6">
           <div>
             <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-timber-800 mb-2">Email Address</label>
-            <input required type="email" className="w-full bg-transparent border-2 border-timber-800 p-4 rounded-xl outline-none focus:ring-2 focus:ring-timber-500 transition-all" placeholder="e.g. name@university.edu" />
+            <input required type="email" name="email" onChange={handleChange} className="w-full bg-transparent border-2 border-timber-800 p-4 rounded-xl outline-none focus:ring-2 focus:ring-timber-500 transition-all" placeholder="e.g. name@university.edu" />
           </div>
           <div>
             <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-timber-800 mb-2">Password</label>
-            <input required type="password" className="w-full bg-transparent border-2 border-timber-800 p-4 rounded-xl outline-none focus:ring-2 focus:ring-timber-500 transition-all" placeholder="••••••••" />
+            <input required type="password" name="password" onChange={handleChange} className="w-full bg-transparent border-2 border-timber-800 p-4 rounded-xl outline-none focus:ring-2 focus:ring-timber-500 transition-all" placeholder="••••••••" />
           </div>
 
           <motion.button type="submit" whileHover={{ scale: 1.02, backgroundColor: "#3E2723", color: "#F5F5DC" }}
