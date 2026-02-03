@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom'; 
+import { useAuth } from '../context/AuthContext'; // Import Auth Logic
 import scribbleBg from '../assets/scribble-bg.png';
 
 const Register = () => {
+  const { login } = useAuth(); // Hook into the gateman
   const [role, setRole] = useState('student');
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
     idNumber: '', 
-    department: 'Computer Science', // Ensure this exists in your 'departments' table!
+    department: 'Computer Science', 
     password: '' 
   });
   const navigate = useNavigate();
@@ -30,8 +32,15 @@ const Register = () => {
       const data = await response.json();
 
       if (response.ok) {
-        alert("Registration Successful, Chief!");
-        navigate('/login');
+        // Log the user in immediately (Jaw-dropping UX)
+        login(data.user, data.token);
+        
+        // Direct them to the correct dashboard based on role
+        if (data.user.role === 'lecturer' || data.user.role === 'admin') {
+          navigate('/dashboard/lecturer');
+        } else {
+          navigate('/dashboard/student');
+        }
       } else {
         alert(data.message || "Registration failed");
       }
@@ -110,8 +119,15 @@ const Register = () => {
           </motion.button>
         </form>
         
+        {/* DYNAMIC LOG IN LINK: Changes destination based on current role state */}
         <p className="text-center mt-6 text-sm font-bold text-timber-700 font-body">
-          Already a member? <Link to="/login" className="text-timber-500 hover:underline">Log In</Link>
+          Already a Rootler?{" "}
+          <Link 
+            to={role === 'lecturer' ? "/admin" : "/login"} 
+            className="text-timber-500 hover:underline font-black"
+          >
+            {role === 'lecturer' ? "Lecturer Log In" : "Log In"}
+          </Link>
         </p>
       </motion.div>
     </div>

@@ -22,10 +22,15 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = (userData, token) => {
-    // userData should contain { id, fullName, role, departmentId }
-    setUser(userData);
+    // HARMONIZATION: Ensure UI keys match backend response
+    const formattedUser = {
+        ...userData,
+        department: userData.departmentName, // Map departmentName to department
+        displayId: userData.staffId          // Map staffId to a generic displayId
+    };
+    setUser(formattedUser);
     localStorage.setItem('rootle_token', token);
-    localStorage.setItem('rootle_user', JSON.stringify(userData));
+    localStorage.setItem('rootle_user', JSON.stringify(formattedUser));
   };
 
   const logout = () => {
@@ -34,12 +39,13 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
-  // Helper to check permissions
-  const isAdmin = () => user?.role === 'admin';
-
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, isAdmin }}>
-      {!loading && children} 
+    <AuthContext.Provider value={{ user, login, logout, loading, isAdmin: user?.role === 'admin', isLecturer: user?.role === 'lecturer' }}>
+      {!loading ? children : (
+        <div className="min-h-screen bg-[#F5F5DC] flex items-center justify-center font-black text-timber-800">
+          ROOTLE IS INITIALIZING...
+        </div>
+      )}
     </AuthContext.Provider>
   );
 };

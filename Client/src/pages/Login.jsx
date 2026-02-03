@@ -25,9 +25,15 @@ const Login = () => {
       const data = await response.json();
 
       if (response.ok) {
-        // We pass the user object and token to our updated AuthContext
+        // HANDSHAKE
         login(data.user, data.token); 
-        navigate('/dashboard/student'); 
+
+        // ROLE-BASED ROUTING LOGIC
+        if (data.user.role === 'lecturer' || data.user.role === 'admin') {
+          navigate('/dashboard/lecturer');
+        } else {
+          navigate('/dashboard/student'); 
+        }
       } else {
         alert(data.message || "Invalid Credentials");
       }
@@ -45,7 +51,7 @@ const Login = () => {
         className="w-full max-w-md bg-timber-100/80 backdrop-blur-md border-4 border-timber-800 p-10 rounded-[40px] shadow-[15px_15px_0px_0px_rgba(62,39,35,1)]"
       >
         <div className="text-center mb-10">
-          <h2 className="text-4xl font-display font-black text-timber-800 uppercase tracking-tighter">Welcome Back</h2>
+          <h2 className="text-4xl font-display font-black text-timber-800 uppercase tracking-tighter">Welcome to Rootle</h2>
           <p className="text-timber-600 font-medium mt-2">Enter your academic credentials</p>
         </div>
 
@@ -66,7 +72,7 @@ const Login = () => {
         </form>
 
         <p className="text-center mt-8 text-sm font-medium text-timber-700">
-          New here? <Link to="/register" className="text-timber-500 font-bold hover:underline">Register</Link>
+         No roots, That ain't Good? <Link to="/register" className="text-timber-500 font-bold hover:underline">Register</Link>
         </p>
       </motion.div>
     </div>

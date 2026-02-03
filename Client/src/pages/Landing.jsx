@@ -52,10 +52,10 @@ const Landing = () => {
         {/* Left Content */}
         <div>
           <h1 className="text-[9rem] font-display font-black text-timber-800 leading-[0.8] mb-2">Share</h1>
-          <h2 className="text-[9rem] font-display font-black leading-[0.8] mb-8 text-gold-leaf glow-backlight">Rootle it.</h2>
+          <h2 className="text-[9rem] font-display font-black leading-[0.8] mb-8 text-gold-leaf glow-backlight">Rootle</h2>
 
           <p className="text-xl text-timber-700 max-w-md mb-12 leading-relaxed font-medium">
-            The decentralized <span className="italic font-bold text-timber-800">library</span> for the modern academia. 
+            The decentralized <span className="italic font-bold text-timber-800">Library</span> for the modern academia. 
             Connect, share notes, and grow the roots of knowledge.
           </p>
 

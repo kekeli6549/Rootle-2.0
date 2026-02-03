@@ -24,16 +24,20 @@ const AdminLogin = () => {
 
       const data = await response.json();
 
-      if (response.ok && data.user.role === 'lecturer') {
-        login(data.user, data.token);
-        navigate('/dashboard/lecturer'); 
-      } else if (data.user && data.user.role !== 'lecturer') {
-        alert("Access Denied: You do not have Staff Clearance.");
+      if (response.ok) {
+        // CHECK CLEARANCE LEVEL
+        if (data.user.role === 'lecturer' || data.user.role === 'admin') {
+          login(data.user, data.token);
+          navigate('/dashboard/lecturer'); 
+        } else {
+          alert("Access Denied: You do not have Staff Clearance. Go back to the Student Gate!");
+        }
       } else {
         alert(data.message || "Authentication failed");
       }
     } catch (err) {
       console.error("Admin Login Error:", err);
+      alert("Command Center is currently unreachable.");
     }
   };
 

@@ -1,29 +1,18 @@
 // server/config/db.js
 const { Pool } = require('pg');
 const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
-// 1. Force load dotenv from the root directory
-require('dotenv').config({ path: path.join(__dirname, '../.env') });
-
-// 2. DEBUG: This will show in your terminal. 
-// If it says 'undefined', the .env file isn't being read.
-console.log("🛠️ DB Attempting connect with user:", process.env.DB_USER);
+// This console log is your best friend right now. 
+// If it says 'undefined' when you start the server, the path above is still wrong.
+console.log("🛠️ Checking DB Password length:", process.env.DB_PASSWORD ? process.env.DB_PASSWORD.length : "MISSING");
 
 const pool = new Pool({
     user: process.env.DB_USER,
     host: process.env.DB_HOST,
     database: process.env.DB_NAME,
-    // The Fix: Ensure it's a string and provide a fallback to avoid the SASL error
-    password: String(process.env.DB_PASSWORD || ''), 
-    port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 5432,
-});
-
-pool.on('connect', () => {
-    console.log('✅ Rootle Database: Connection Established');
-});
-
-pool.on('error', (err) => {
-    console.error('❌ Rootle Database: Unexpected Error', err);
+    password: String(process.env.DB_PASSWORD || ''), // Force string conversion
+    port: parseInt(process.env.DB_PORT || '5432'),
 });
 
 module.exports = {
