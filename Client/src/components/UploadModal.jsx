@@ -2,24 +2,24 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext'; 
 
-const UploadModal = ({ isOpen, onClose }) => {
+const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
   const { user } = useAuth();
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('Notes'); // Matched to your dashboard categories
+  const [category, setCategory] = useState('Notes'); 
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
 
-  // Helper to show the right icon based on file extension
   const getFileIcon = (fileName) => {
     const ext = fileName.split('.').pop().toLowerCase();
-    if (ext === 'pdf') return '📕';
-    if (['doc', 'docx'].includes(ext)) return '📘';
-    if (['ppt', 'pptx'].includes(ext)) return '📙';
-    if (['jpg', 'jpeg', 'png'].includes(ext)) return '🖼️';
-    return '📄';
+    const icons = {
+        pdf: '📕', doc: '📘', docx: '📘', ppt: '📙', pptx: '📙',
+        xls: '📊', xlsx: '📊', jpg: '🖼️', jpeg: '🖼️', png: '🖼️',
+        zip: '📦', rar: '📦'
+    };
+    return icons[ext] || '📄';
   };
 
   const handleDrag = (e) => {
@@ -35,14 +35,14 @@ const UploadModal = ({ isOpen, onClose }) => {
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile.size > 50 * 1024 * 1024) return alert("File is too heavy! (Max 50MB)");
+      if (droppedFile.size > 50 * 1024 * 1024) return onUploadSuccess("FILE TOO HEAVY (MAX 50MB)", "error");
       setFile(droppedFile);
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!file) return alert("Select a file first, Chief!");
+    if (!file) return onUploadSuccess("SELECT A FILE, CHIEF!", "error");
     
     setLoading(true);
     const token = localStorage.getItem('rootle_token');
@@ -60,15 +60,16 @@ const UploadModal = ({ isOpen, onClose }) => {
 
       const data = await response.json();
       if (response.ok) {
-        alert("Knowledge Rootled Successfully! 🚀");
+        // Trigger the fancy Toast in Dashboard.jsx
+        onUploadSuccess("KNOWLEDGE ROOTLED! AWAITING APPROVAL 🚀", "success");
         setFile(null);
         setTitle('');
         onClose();
       } else {
-        alert(data.message || "Something went wrong.");
+        onUploadSuccess(data.message || "SYSTEM ERROR", "error");
       }
     } catch (err) {
-      alert("Connection failed. Check your server.");
+      onUploadSuccess("SERVER CONNECTION FAILED", "error");
     } finally {
       setLoading(false);
     }
@@ -84,8 +85,10 @@ const UploadModal = ({ isOpen, onClose }) => {
       >
         <button onClick={onClose} className="absolute top-6 right-8 text-timber-800 font-black text-2xl hover:rotate-90 transition-transform">✕</button>
 
-        <h2 className="text-4xl font-display font-black text-timber-800 tracking-tighter mb-1">Rootle a New File.</h2>
-        <p className="text-timber-500 uppercase text-[10px] font-black tracking-[0.2em] mb-8">UPLOADING AS: {user?.fullName}</p>
+        <h2 className="text-4xl font-display font-black text-timber-800 tracking-tighter mb-1 text-center">Vault Deposit.</h2>
+        <p className="text-timber-500 uppercase text-[10px] text-center font-black tracking-[0.2em] mb-8">
+            FACULTY: {user?.departmentName || 'GENERAL'} • UPLOADER: {user?.fullName || 'Scholar'}
+        </p>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div 
@@ -102,9 +105,9 @@ const UploadModal = ({ isOpen, onClose }) => {
               </div>
             ) : (
               <>
-                <div className="w-16 h-16 bg-timber-800 rounded-full flex items-center justify-center mb-4 text-gold-leaf text-2xl">↑</div>
+                <div className="w-16 h-16 bg-timber-800 rounded-full flex items-center justify-center mb-4 text-gold-leaf text-2xl shadow-lg">↑</div>
                 <p className="text-timber-800 font-bold">Drag files here or <span className="text-timber-500 underline cursor-pointer">browse</span></p>
-                <p className="text-timber-400 text-[9px] font-black mt-2 uppercase tracking-widest">PDF • DOCX • PPTX • XLSX • IMG (MAX 50MB)</p>
+                <p className="text-timber-400 text-[9px] font-black mt-2 uppercase tracking-widest text-center">PDF • DOCX • PPTX • XLSX • ZIP • JPEG • PNG (MAX 50MB)</p>
               </>
             )}
             <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => setFile(e.target.files[0])} />
@@ -117,11 +120,10 @@ const UploadModal = ({ isOpen, onClose }) => {
             </div>
             <div>
               <label className="text-[10px] font-black uppercase text-timber-800 block mb-2 tracking-widest">Category</label>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full bg-white border-2 border-timber-800 p-4 rounded-xl font-bold cursor-pointer outline-none appearance-none">
-                <option value="Notes">Notes</option>
-                <option value="Past Questions">Past Questions</option>
-                <option value="Research">Research</option>
-                <option value="Textbooks">Textbooks</option>
+              <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full bg-white border-2 border-timber-800 p-4 rounded-xl font-bold cursor-pointer outline-none">
+                {['Notes', 'Past Questions', 'Research', 'Textbooks'].map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                ))}
               </select>
             </div>
           </div>

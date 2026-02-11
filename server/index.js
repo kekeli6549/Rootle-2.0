@@ -6,8 +6,18 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
-
+const pool = require('./config/db');
 const app = express();
+
+
+// Test DB Connection on startup
+pool.query('SELECT NOW()', (err, res) => {
+    if (err) {
+        console.error("❌ Rootle DB Connection Error:", err.message);
+    } else {
+        console.log("✅ Rootle Database: Connected & Ready");
+    }
+});
 
 // 1. Routes
 const authRoutes = require('./routes/authRoutes');
@@ -30,7 +40,7 @@ const limiter = rateLimit({
     max: 100,
     message: "Too many requests from this IP."
 });
-app.use('/api/', limiter);
+// app.use('/api/', limiter);
 
 // 4. Serve Static Files (The Vault)
 // This makes http://localhost:5000/uploads/filename.pdf accessible

@@ -1,0 +1,70 @@
+-- 1. Create the Departments table (Must be first)
+CREATE TABLE IF NOT EXISTS departments (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL
+);
+
+-- 2. Create the Users table
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    full_name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL, 
+    role VARCHAR(20) DEFAULT 'student',
+    department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+    student_id VARCHAR(50),
+    staff_id VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3. Create the Resources table (The one causing the error)
+CREATE TABLE IF NOT EXISTS resources (
+    id SERIAL PRIMARY KEY,
+    uploader_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL,
+    file_url TEXT NOT NULL,
+    file_hash TEXT UNIQUE,
+    file_type TEXT,
+    status TEXT DEFAULT 'pending',
+    download_count INTEGER DEFAULT 0,
+    deleted_by_user BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 4. Create Deletion Requests
+CREATE TABLE IF NOT EXISTS deletion_requests (
+    id SERIAL PRIMARY KEY,
+    resource_id INTEGER REFERENCES resources(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 5. Add some departments so the app doesn't crash on registration
+INSERT INTO departments (name) 
+VALUES ('Computer Science'), ('Medicine'), ('Law'), ('Engineering'), ('Art')
+ON CONFLICT (name) DO NOTHING;
+
+-- 1. Remove the old restriction if it exists
+ALTER TABLE deletion_requests 
+DROP CONSTRAINT IF EXISTS deletion_requests_resource_id_fkey;
+
+-- 2. Add the Cascade rule
+ALTER TABLE deletion_requests 
+ADD CONSTRAINT deletion_requests_resource_id_fkey 
+FOREIGN KEY (resource_id) 
+REFERENCES resources(id) 
+ON DELETE CASCADE;
+
+ALTER TABLE resources 
+DROP CONSTRAINT IF EXISTS resources_uploader_id_fkey;
+
+ALTER TABLE resources 
+ADD CONSTRAINT resources_uploader_id_fkey 
+FOREIGN KEY (uploader_id) 
+REFERENCES users(id) 
+ON DELETE CASCADE;
+
+UPDATE users SET department_id = 1 WHERE email = 'student@email.com';

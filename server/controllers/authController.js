@@ -5,7 +5,8 @@ const jwt = require('jsonwebtoken');
 // --- REGISTER USER ---
 exports.register = async (req, res) => {
     try {
-        const { fullName, email, password, role, department, idNumber } = req.body;
+        // We now receive departmentId directly from the frontend
+        const { fullName, email, password, role, departmentId, idNumber } = req.body;
 
         // 1. Validation: Check if user already exists
         const userExists = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
@@ -13,13 +14,12 @@ exports.register = async (req, res) => {
             return res.status(400).json({ message: "User already exists." });
         }
 
-        // 2. Map Department Name to Department ID
-        const deptResult = await pool.query('SELECT id FROM departments WHERE name = $1', [department]);
-        
-        if (deptResult.rows.length === 0) {
-            return res.status(400).json({ message: "Selected department does not exist in our records." });
+        // 2. Verify Department Exists (Safety Check)
+        const deptCheck = await pool.query('SELECT name FROM departments WHERE id = $1', [departmentId]);
+        if (deptCheck.rows.length === 0) {
+            return res.status(400).json({ message: "Invalid department selection." });
         }
-        const departmentId = deptResult.rows[0].id;
+        const departmentName = deptCheck.rows[0].name;
 
         // 3. Hash Password
         const salt = await bcrypt.genSalt(10);
@@ -38,7 +38,7 @@ exports.register = async (req, res) => {
 
         const user = newUserResult.rows[0];
 
-        // 6. AUTO-LOGIN LOGIC: Generate token immediately for better UX
+        // 6. Generate token
         const token = jwt.sign(
             { id: user.id, role: user.role }, 
             process.env.JWT_SECRET, 
@@ -47,28 +47,28 @@ exports.register = async (req, res) => {
 
         res.status(201).json({
             message: "Welcome to the family!",
-            token, // Send token so frontend can log them in immediately
+            token,
             user: { 
                 id: user.id, 
                 fullName: user.full_name,
                 role: user.role,
                 departmentId: user.department_id,
-                departmentName: department, // Pass the name back for the UI
-                staffId: user.staff_id || user.student_id
+                departmentName: departmentName,
+                idNumber: staffId || studentId
             }
         });
 
     } catch (err) {
         console.error("Registration Error:", err.message);
-        res.status(500).json({ message: "Server Error during registration" });
+        res.status(500).json({ message: "Oshey! Server Error during registration" });
     }
 };
 
-// --- LOGIN USER ---
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
+        // 1. Check if user exists
         const userResult = await pool.query(
             `SELECT users.*, departments.name as dept_name 
              FROM users 
@@ -83,17 +83,24 @@ exports.login = async (req, res) => {
 
         const user = userResult.rows[0];
 
+        // 2. Compare Password
         const isMatch = await bcrypt.compare(password, user.password_hash);
         if (!isMatch) {
             return res.status(400).json({ message: "Invalid Credentials" });
         }
 
+        // 3. GENERATE TOKEN (CRITICAL: Include department_id for Jurisdiction logic)
         const token = jwt.sign(
-            { id: user.id, role: user.role }, 
+            { 
+                id: user.id, 
+                role: user.role, 
+                department_id: user.department_id // <--- THIS FIXES THE JURISDICTION ERROR
+            }, 
             process.env.JWT_SECRET, 
             { expiresIn: '24h' }
         );
 
+        // 4. Send Response
         res.json({
             message: "Login successful!",
             token,
@@ -103,12 +110,23 @@ exports.login = async (req, res) => {
                 role: user.role,
                 departmentId: user.department_id,
                 departmentName: user.dept_name, 
-                staffId: user.staff_id || user.student_id
+                idNumber: user.staff_id || user.student_id
             }
         });
 
     } catch (err) {
         console.error("Login Error:", err.message);
         res.status(500).json({ message: "Server Error" });
+    }
+};
+
+// --- GET ALL DEPARTMENTS (For the Register Dropdown) ---
+exports.getDepartments = async (req, res) => {
+    try {
+        const result = await pool.query('SELECT id, name FROM departments ORDER BY name ASC');
+        res.json(result.rows);
+    } catch (err) {
+        console.error("Fetch Dept Error:", err.message);
+        res.status(500).json({ message: "Failed to load departments" });
     }
 };

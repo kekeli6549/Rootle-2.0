@@ -13,29 +13,32 @@ const LecturerDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // --- NEW STATES FOR UPLOAD ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [uploadTitle, setUploadTitle] = useState('');
   const [category, setCategory] = useState('Handout');
   const [file, setFile] = useState(null);
 
   const token = localStorage.getItem('rootle_token');
-  const BACKEND_URL = "http://localhost:5000"; // Define base URL for files
+  const BACKEND_URL = "http://localhost:5000";
 
+  // --- 1. DATA SYNC LOGIC (Jurisdiction Aware) ---
   const fetchDashboardData = async () => {
+    // Safety check: ensure we have the user's department info
+    if (!user || !user.departmentId) return;
+
     setLoading(true);
     setError(null);
     try {
       let endpoint = '';
       
+      // We use user.departmentId which we just added to the AuthController/Register logic
       if (activeTab === 'Review Queue') {
-        endpoint = `${BACKEND_URL}/api/resources?status=pending&departmentId=${user.department_id}`;
+        endpoint = `${BACKEND_URL}/api/resources?status=pending&departmentId=${user.departmentId}`;
       } else if (activeTab === 'Department Vault') {
-        endpoint = `${BACKEND_URL}/api/resources?status=approved&departmentId=${user.department_id}`;
+        endpoint = `${BACKEND_URL}/api/resources?status=approved&departmentId=${user.departmentId}`;
       } else if (activeTab === 'World Library') {
         endpoint = `${BACKEND_URL}/api/resources?status=approved`; 
       } else if (activeTab === 'Deletion Inbox') {
-        // Admin/Lecturer specific deletion requests
         endpoint = `${BACKEND_URL}/api/resources/admin/deletion-requests`;
       }
 
@@ -43,11 +46,12 @@ const LecturerDashboard = () => {
         headers: { 'x-auth-token': token }
       });
       
-      if (!res.ok) throw new Error("Connection to vault failed.");
+      if (!res.ok) throw new Error("Vault synchronization failed.");
       const data = await res.json();
       setDataList(data);
     } catch (err) {
-      setError("Vault synchronization failed.");
+      setError("Sync Error: " + err.message);
+      setDataList([]);
     } finally {
       setLoading(false);
     }
@@ -55,22 +59,28 @@ const LecturerDashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
-  }, [activeTab]);
+  }, [activeTab, user]);
 
-  // --- LOGIC: ACTION HANDLER (APPROVE/REJECT/PURGE) ---
+  // --- 2. ACTION HANDLER (Approve/Reject/Purge) ---
   const handleAction = async (id, action, type = 'approval') => {
-    if(!window.confirm(`Are you sure you want to ${action} this?`)) return;
+    const confirmMsg = action === 'permanent' ? "PERMANENTLY PURGE from the vault?" : `Are you sure you want to ${action} this?`;
+    if(!window.confirm(confirmMsg)) return;
+
     try {
-      let endpoint = "";
+      let endpoint = '';
+      let method = 'POST';
+
       if (type === 'approval') {
-        // action is either 'approve' or 'reject'
+        // Points to our admin controller routes
         endpoint = `${BACKEND_URL}/api/resources/admin/${action}/${id}`;
+        method = action === 'approve' ? 'PUT' : 'DELETE'; 
       } else {
         endpoint = `${BACKEND_URL}/api/resources/admin/permanent-delete/${id}`;
+        method = 'DELETE';
       }
       
       const response = await fetch(endpoint, {
-        method: action === 'reject' || action === 'permanent' || type === 'delete' ? 'DELETE' : 'POST',
+        method: method,
         headers: { 'x-auth-token': token }
       });
 
@@ -78,22 +88,23 @@ const LecturerDashboard = () => {
         fetchDashboardData(); 
       } else {
         const errData = await response.json();
-        alert(errData.message || "Action denied. Check your jurisdiction.");
+        alert(errData.message || "Access Denied: Check jurisdiction.");
       }
-    } catch (err) {
-      console.error("Action failed:", err);
+    } catch (err) { 
+        console.error("Action Error:", err); 
+        alert("Server communication failure.");
     }
   };
 
-  // --- LOGIC: UPLOAD HANDLER ---
+  // --- 3. UPLOAD LOGIC ---
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!file) return alert("Abeg, select a file first!");
+    if (!file) return alert("Select a file first!");
 
     const formData = new FormData();
     formData.append('title', uploadTitle);
     formData.append('category', category);
-    formData.append('file', file); // Matches the 'file' field in Multer
+    formData.append('file', file);
 
     try {
       const res = await fetch(`${BACKEND_URL}/api/resources/upload`, {
@@ -107,17 +118,16 @@ const LecturerDashboard = () => {
         setUploadTitle('');
         setFile(null);
         fetchDashboardData();
-        alert("Success! Resource added to the queue.");
+        alert("Deploy Successful: Resource added to your department vault.");
       } else {
-        alert("Upload failed. Try again, Chief.");
+        const err = await res.json();
+        alert(err.message || "Upload failed.");
       }
-    } catch (err) {
-      console.error("Upload error:", err);
-    }
+    } catch (err) { console.error(err); }
   };
 
-  // --- LOGIC: VIEW FILE ---
   const handleViewFile = (url) => {
+    if (!url) return alert("File path not found.");
     const fullUrl = `${BACKEND_URL}/${url.replace(/\\/g, '/')}`;
     window.open(fullUrl, '_blank');
   };
@@ -127,7 +137,7 @@ const LecturerDashboard = () => {
     navigate('/admin');
   };
 
-  if (loading) return (
+  if (loading && !user) return (
     <div className="min-h-screen bg-[#3E2723] flex flex-col items-center justify-center">
         <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
             className="w-16 h-16 border-4 border-gold-leaf border-t-transparent rounded-full" />
@@ -155,16 +165,13 @@ const LecturerDashboard = () => {
             </motion.div>
           ))}
         </nav>
-        
+
+        {/* LECTURER PROFILE SECTION (Dynamic Info) */}
         <div className="mt-auto border-t border-red-900/50 pt-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-gold-leaf rounded-full flex items-center justify-center text-timber-900 font-black border-2 border-timber-800">
-                {user?.fullName?.charAt(0)}
-              </div>
-              <div>
-                <p className="text-[10px] font-black uppercase text-timber-100 leading-none truncate max-w-[120px]">{user?.fullName}</p>
-                <p className="text-[8px] text-red-400 font-mono uppercase tracking-tighter">{user?.role} ACCESS</p>
-              </div>
+            <div className="bg-black/20 p-4 rounded-2xl mb-4 border border-red-900/30">
+              <p className="text-[8px] text-gold-leaf/50 font-black uppercase tracking-[0.2em] mb-2">Authenticated Staff</p>
+              <h4 className="text-sm font-black text-white uppercase leading-tight">{user?.fullName || 'Lecturer Name'}</h4>
+              <p className="text-[9px] text-red-400 font-bold uppercase mt-1">{user?.departmentName || 'Accessing...'}</p>
             </div>
             <button onClick={handleLogout} className="w-full py-3 bg-red-950/50 border border-red-900 text-[9px] font-black uppercase text-red-400 hover:bg-red-900 hover:text-white transition-all rounded-lg">
               Terminate Session
@@ -177,7 +184,7 @@ const LecturerDashboard = () => {
         <header className="flex justify-between items-end mb-16">
           <div>
             <p className="text-red-900 font-black text-[10px] uppercase tracking-[0.4em] mb-2">
-                {activeTab === 'World Library' ? 'Global Access' : `${user?.departmentName || 'Department'} Portal`}
+                {activeTab === 'World Library' ? 'Global Access' : `${user?.departmentName || 'Departmental'} Jurisdiction`}
             </p>
             <h1 className="text-7xl font-display font-black text-timber-800 tracking-tighter leading-none">
               {activeTab === 'Review Queue' ? 'The Gate.' : 
@@ -198,67 +205,61 @@ const LecturerDashboard = () => {
         <div className="grid gap-8">
           <AnimatePresence mode="wait">
             <motion.div key={activeTab} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-6">
-              {dataList.map((item) => {
-                const isMyDepartment = (item.department_id === user?.department_id);
-                const resourceId = item.resource_id || item.id;
+              {dataList.length > 0 ? (
+                dataList.map((item) => {
+                    const isMyDepartment = (item.department_id === user?.departmentId);
+                    const targetId = activeTab === 'Deletion Inbox' ? item.resource_id : item.id;
 
-                return (
-                  <div key={item.id} className={`bg-white border-4 border-timber-800 p-8 rounded-[40px] flex justify-between items-center shadow-[15px_15px_0px_0px_#3E2723] group transition-all`}>
-                    <div className="flex gap-6 items-center">
-                        <div className="w-16 h-16 bg-timber-100 rounded-2xl flex items-center justify-center text-3xl border-2 border-timber-800 group-hover:bg-gold-leaf transition-colors">
-                          {item.category === 'Past Question' ? '📜' : '📄'}
+                    return (
+                    <div key={item.id} className="bg-white border-4 border-timber-800 p-8 rounded-[40px] flex justify-between items-center shadow-[15px_15px_0px_0px_#3E2723] group transition-all">
+                        <div className="flex gap-6 items-center">
+                            <div className="w-16 h-16 bg-timber-100 rounded-2xl flex items-center justify-center text-3xl border-2 border-timber-800 group-hover:bg-gold-leaf transition-colors">
+                            {item.category === 'Past Question' ? '📜' : '📄'}
+                            </div>
+                            <div>
+                                <h3 className="font-display font-black text-2xl text-timber-800 uppercase leading-none mb-1">{item.title}</h3>
+                                <p className="text-timber-400 font-black text-[10px] uppercase tracking-widest">
+                                    {item.category} • {item.uploader_name || 'Student Upload'}
+                                    {!isMyDepartment && activeTab === 'World Library' && <span className="text-red-900 ml-2 border border-red-900 px-1 rounded text-[8px]">EXTERNAL DEPT</span>}
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <h3 className="font-display font-black text-2xl text-timber-800 uppercase leading-none mb-1">{item.title}</h3>
-                            <p className="text-timber-400 font-black text-[10px] uppercase tracking-widest">
-                                {item.category} • {item.uploader_name || 'System'}
-                                {!isMyDepartment && <span className="text-red-900 ml-2 border border-red-900 px-1 rounded text-[8px]">EXTERNAL DEPT</span>}
-                            </p>
+                        
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => handleViewFile(item.file_url)}
+                                className="px-6 py-2 bg-timber-100 text-timber-800 border-2 border-timber-800 font-black text-[9px] uppercase rounded-lg hover:bg-timber-800 hover:text-white transition-all">
+                                Preview
+                            </button>
+
+                            {activeTab === 'Review Queue' && (
+                                <>
+                                    <button onClick={() => handleAction(targetId, 'reject')} className="px-6 py-2 bg-red-100 text-red-900 border-2 border-red-900 font-black text-[9px] uppercase rounded-lg hover:bg-red-600 hover:text-white transition-all">Reject</button>
+                                    <button onClick={() => handleAction(targetId, 'approve')} className="px-6 py-2 bg-timber-800 text-gold-leaf font-black text-[9px] uppercase rounded-lg hover:scale-105 transition-all">Approve</button>
+                                </>
+                            )}
+
+                            {(activeTab === 'Department Vault' || (activeTab === 'World Library' && isMyDepartment)) && (
+                                <button onClick={() => handleAction(targetId, 'permanent', 'delete')} className="px-6 py-2 bg-red-900 text-white font-black text-[9px] uppercase rounded-lg hover:bg-black transition-all">Delete</button>
+                            )}
+
+                            {activeTab === 'Deletion Inbox' && (
+                                <button onClick={() => handleAction(targetId, 'permanent', 'delete')} className="px-8 py-3 bg-red-900 text-white font-black text-[10px] uppercase rounded-xl shadow-lg hover:bg-black transition-all">
+                                    Purge Permanently
+                                </button>
+                            )}
                         </div>
                     </div>
-                    
-                    <div className="flex gap-3">
-                      {/* UNIVERSAL ACTION: VIEW */}
-                      <button 
-                        onClick={() => handleViewFile(item.file_url)}
-                        className="px-6 py-2 bg-timber-100 text-timber-800 border-2 border-timber-800 font-black text-[9px] uppercase rounded-lg hover:bg-timber-800 hover:text-white transition-all">
-                        View
-                      </button>
-
-                      {/* ACTION: REVIEW QUEUE */}
-                      {activeTab === 'Review Queue' && (
-                        <>
-                          <button onClick={() => handleAction(item.id, 'reject')} className="px-6 py-2 bg-red-100 text-red-900 border-2 border-red-900 font-black text-[9px] uppercase rounded-lg">Decline</button>
-                          <button onClick={() => handleAction(item.id, 'approve')} className="px-6 py-2 bg-timber-800 text-gold-leaf font-black text-[9px] uppercase rounded-lg">Verify & Publish</button>
-                        </>
-                      )}
-
-                      {/* ACTION: DEPARTMENT VAULT */}
-                      {activeTab === 'Department Vault' && (
-                        <button onClick={() => handleAction(item.id, 'permanent', 'delete')} className="px-6 py-2 bg-red-900 text-white font-black text-[9px] uppercase rounded-lg">Delete</button>
-                      )}
-
-                      {/* ACTION: WORLD LIBRARY */}
-                      {activeTab === 'World Library' && isMyDepartment && (
-                         <button onClick={() => handleAction(item.id, 'permanent', 'delete')} className="px-6 py-2 bg-red-900 text-white font-black text-[9px] uppercase rounded-lg">Delete</button>
-                      )}
-
-                      {/* ACTION: DELETION INBOX */}
-                      {activeTab === 'Deletion Inbox' && (
-                        <button onClick={() => handleAction(resourceId, 'permanent', 'delete')} className="px-8 py-3 bg-red-900 text-white font-black text-[10px] uppercase rounded-xl shadow-lg hover:bg-black transition-all">
-                          Purge Permanently
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-              {dataList.length === 0 && <EmptyState text={`The ${activeTab} is currently clear.`} />}
+                    );
+                })
+              ) : (
+                <EmptyState text={`The ${activeTab} is currently clear.`} />
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
 
-        {/* --- MODAL COMPONENT (African/Diaspora Styling Preserved) --- */}
+        {/* --- UPLOAD MODAL --- */}
         <AnimatePresence>
           {isModalOpen && (
             <motion.div 
@@ -267,22 +268,18 @@ const LecturerDashboard = () => {
               <motion.div 
                 initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
                 className="bg-[#F5F5DC] p-10 rounded-[50px] border-8 border-timber-800 w-full max-w-lg shadow-[30px_30px_0px_0px_#1a0f0d]">
-                <h2 className="text-4xl font-display font-black text-timber-800 mb-8 uppercase tracking-tighter">New Entry.</h2>
+                <h2 className="text-4xl font-display font-black text-timber-800 mb-8 uppercase tracking-tighter">Vault Entry.</h2>
                 
                 <form onSubmit={handleUpload} className="space-y-6">
                   <div>
                     <label className="text-[10px] font-black text-timber-400 uppercase tracking-widest block mb-2">Resource Title</label>
-                    <input 
-                      type="text" required
-                      className="w-full bg-white border-4 border-timber-800 p-4 rounded-2xl font-black text-timber-800 text-sm focus:outline-none"
-                      value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)}
-                    />
+                    <input type="text" required placeholder="Ex: CS301 Lecture Notes" className="w-full bg-white border-4 border-timber-800 p-4 rounded-2xl font-black text-timber-800 text-sm focus:outline-none"
+                      value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} />
                   </div>
 
                   <div>
                     <label className="text-[10px] font-black text-timber-400 uppercase tracking-widest block mb-2">Category</label>
-                    <select 
-                      className="w-full bg-white border-4 border-timber-800 p-4 rounded-2xl font-black text-timber-800 text-sm focus:outline-none appearance-none"
+                    <select className="w-full bg-white border-4 border-timber-800 p-4 rounded-2xl font-black text-timber-800 text-sm focus:outline-none appearance-none"
                       value={category} onChange={(e) => setCategory(e.target.value)}>
                       <option>Handout</option>
                       <option>Past Question</option>
@@ -291,30 +288,17 @@ const LecturerDashboard = () => {
                     </select>
                   </div>
 
-                  <div className="border-4 border-dashed border-timber-200 p-8 rounded-3xl text-center">
-                    <input 
-                      type="file" required id="fileInput" className="hidden"
-                      onChange={(e) => setFile(e.target.files[0])}
-                    />
+                  <div className="border-4 border-dashed border-timber-200 p-8 rounded-3xl text-center hover:border-timber-800 transition-colors">
+                    <input type="file" required id="fileInput" className="hidden" onChange={(e) => setFile(e.target.files[0])} />
                     <label htmlFor="fileInput" className="cursor-pointer">
                       <p className="text-3xl mb-2">📂</p>
-                      <p className="font-black text-[10px] text-timber-400 uppercase tracking-widest">
-                        {file ? file.name : "Tap to select document"}
-                      </p>
+                      <p className="font-black text-[10px] text-timber-400 uppercase tracking-widest">{file ? file.name : "Select Document (PDF/DOCX)"}</p>
                     </label>
                   </div>
 
                   <div className="flex gap-4 pt-4">
-                    <button 
-                      type="button" onClick={() => setIsModalOpen(false)}
-                      className="flex-1 py-4 font-black uppercase text-[10px] tracking-widest text-timber-400 hover:text-timber-800 transition-colors">
-                      Cancel
-                    </button>
-                    <button 
-                      type="submit"
-                      className="flex-1 py-4 bg-timber-800 text-gold-leaf rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl hover:bg-black transition-all">
-                      Deploy Resource
-                    </button>
+                    <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 font-black uppercase text-[10px] tracking-widest text-timber-400">Cancel</button>
+                    <button type="submit" className="flex-1 py-4 bg-timber-800 text-gold-leaf rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl hover:bg-black transition-all">Verify & Deploy</button>
                   </div>
                 </form>
               </motion.div>

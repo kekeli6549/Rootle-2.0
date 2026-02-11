@@ -1,9 +1,11 @@
+// src/pages/Dashboard.jsx
 import React, { useState, useEffect } from 'react'; 
 import { motion, AnimatePresence } from 'framer-motion'; 
 import { useAuth } from '../context/AuthContext'; 
 import { useNavigate } from 'react-router-dom';
 import scribbleBg from '../assets/scribble-bg.png';
 import UploadModal from '../components/UploadModal';
+import Toast from '../components/Toast'
 
 const Dashboard = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -11,14 +13,20 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [viewMode, setViewMode] = useState('My Library');
+  const [loading, setLoading] = useState(true);
   const { user, logout } = useAuth(); 
   const navigate = useNavigate();
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
+const showToast = (msg, type = 'success') => {
+  setToast({ show: true, message: msg, type });
+  setTimeout(() => setToast({ ...toast, show: false }), 4000);
+};
 
   // --- DATA SYNC LAYER ---
-  const displayDept = user?.department || user?.departmentName || user?.dept || "Awaiting Sync...";
-  const displayID = user?.idNumber || user?.staffId || user?.studentId || "ROOT-2026";
+  const displayDept = user?.departmentName || user?.department || "Awaiting Sync...";
+  const displayID = user?.studentId || user?.staffId || user?.idNumber || "ROOT-2026";
 
-  // --- NEW: DYNAMIC ICON LOGIC ---
   const getFileIcon = (fileUrl) => {
     const extension = fileUrl?.split('.').pop().toLowerCase();
     switch(extension) {
@@ -36,6 +44,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     const fetchResources = async () => {
+      setLoading(true);
       try {
         const token = localStorage.getItem('rootle_token');
         const url = new URL('http://localhost:5000/api/resources');
@@ -45,8 +54,8 @@ const Dashboard = () => {
         
         if (viewMode === 'My Library') {
           url.searchParams.append('mine', 'true');
-        } else if (viewMode === 'Department Feed' && (user?.department || user?.departmentName)) {
-          url.searchParams.append('department', user?.department || user?.departmentName);
+        } else if (viewMode === 'Department Feed' && user?.department_id) {
+          url.searchParams.append('departmentId', user.department_id);
         } else if (viewMode === 'Trending Research') {
           url.searchParams.append('trending', 'true');
         } 
@@ -58,6 +67,8 @@ const Dashboard = () => {
         if (response.ok) setResources(data);
       } catch (err) {
         console.error("Failed to fetch library feed:", err);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -89,26 +100,22 @@ const Dashboard = () => {
             method: 'DELETE',
             headers: { 'x-auth-token': token }
         });
-        if (response.ok) {
-            setResources(prev => prev.filter(res => res.id !== resId));
-        }
-    } catch (err) {
-        console.error("Delete request failed");
+       if (response.ok) {
+      setResources(prev => prev.filter(res => res.id !== resId));
+      showToast("REMOVAL REQUEST SENT TO LECTURER", "success"); // <--- NEW
+    } else {
+      showToast("FAILED TO SEND REQUEST", "error"); // <--- NEW
     }
-  };
-
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
+  } catch (err) {
+    showToast("NETWORK ERROR", "error");
+  }
+};
 
   return (
     <div className="flex min-h-screen bg-[#F5F5DC]">
-      
       {/* SIDEBAR */}
       <aside className="w-72 bg-timber-800 text-timber-100 flex flex-col p-8 fixed h-full border-r-4 border-timber-500 shadow-2xl z-20">
         <div className="text-3xl font-display font-black tracking-tighter mb-12 text-gold-leaf">Rootle.</div>
-        
         <nav className="space-y-6 flex-1">
           {['My Library', 'Department Feed', 'Trending Research', 'World View'].map((item) => (
             <motion.div 
@@ -123,7 +130,7 @@ const Dashboard = () => {
               {item}
             </motion.div>
           ))}
-          <button onClick={handleLogout} className="mt-4 text-[10px] font-black uppercase text-red-400 hover:text-red-200 transition-colors text-left">
+          <button onClick={() => { logout(); navigate('/login'); }} className="mt-4 text-[10px] font-black uppercase text-red-400 hover:text-red-200 transition-colors text-left">
             Exit System
           </button>
         </nav>
@@ -143,7 +150,6 @@ const Dashboard = () => {
                   </p>
                 </div>
              </div>
-             
              <div className="bg-[#bf953f] border-2 border-gold-leaf p-3 rounded-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,0.3)]">
                <p className="text-[8px] font-black uppercase tracking-[0.2em] text-timber-900/70 mb-1">Active Faculty</p>
                <p className="text-[12px] font-display font-black uppercase text-timber-900 leading-tight">
@@ -165,7 +171,6 @@ const Dashboard = () => {
                 viewMode === 'Department Feed' ? 'Dept. Vault.' : 
                 viewMode === 'World View' ? 'Global.' : 'Your Library.'}
             </h1>
-            
             <div className="relative max-w-md">
               <input 
                 type="text"
@@ -176,7 +181,6 @@ const Dashboard = () => {
               />
             </div>
           </div>
-
           <motion.button 
             onClick={() => setIsModalOpen(true)} 
             whileHover={{ scale: 1.05 }}
@@ -224,10 +228,9 @@ const Dashboard = () => {
                     <div className="bg-timber-100 h-40 rounded-2xl mb-4 flex flex-col items-center justify-center border-2 border-dashed border-timber-300 group-hover:border-timber-800 transition-colors relative">
                         {viewMode === 'World View' && (
                           <div className="absolute bottom-2 right-2 bg-timber-800 text-gold-leaf text-[7px] font-black px-2 py-1 rounded-md uppercase tracking-tighter">
-                            {res.department}
+                            {res.department_name}
                           </div>
                         )}
-
                         <span className="text-4xl mb-2">{fileInfo.icon}</span>
                         <span className={`text-[9px] font-black uppercase tracking-widest ${fileInfo.color}`}>{fileInfo.label}</span>
                     </div>
@@ -240,18 +243,33 @@ const Dashboard = () => {
               })
             ) : (
               <div className="col-span-full py-20 text-center border-4 border-dashed border-timber-300 rounded-[40px]">
-                <p className="font-display font-black text-timber-400 uppercase tracking-widest">No matching resources found.</p>
+                <p className="font-display font-black text-timber-400 uppercase tracking-widest">
+                  {loading ? "SEARCHING THE VAULT..." : "No matching resources found."}
+                </p>
               </div>
             )}
         </div>
       </main>
 
+<div className="flex min-h-screen bg-[#F5F5DC]">
+    {/* ... all your other code ... */}
+    
+    <Toast 
+      isVisible={toast.show} 
+      message={toast.message} 
+      type={toast.type} 
+      onClose={() => setToast({ ...toast, show: false })} 
+    />
+  </div>
+  
       <AnimatePresence>
         {isModalOpen && (
           <UploadModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
         )}
       </AnimatePresence>
     </div>
+
+    
   );
 };
 
