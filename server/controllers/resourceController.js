@@ -2,7 +2,7 @@ const pool = require('../config/db');
 const crypto = require('crypto');
 const fs = require('fs');
 
-// --- 1. UPLOAD RESOURCE (Sync with Departmental Logic) ---
+// --- 1. UPLOAD RESOURCE ---
 exports.uploadResource = async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ message: "No file selected." });
@@ -33,10 +33,9 @@ exports.uploadResource = async (req, res) => {
 
         if (existingFile.rows.length > 0) {
             if (fs.existsSync(filePath)) fs.unlinkSync(filePath); 
-            return res.status(400).json({ message: "Duplicate alert: This file already exists in our vault." });
+            return res.status(400).json({ message: "Duplicate alert: This file already exists." });
         }
 
-        // Insert as 'pending'
         const newResource = await pool.query(
             `INSERT INTO resources 
             (uploader_id, department_id, title, category, file_url, file_hash, file_type, status) 
@@ -48,12 +47,11 @@ exports.uploadResource = async (req, res) => {
 
     } catch (err) {
         if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        console.error("🔥 UPLOAD ERROR:", err);
         res.status(500).json({ message: "Internal Server Error" });
     }
 };
 
-// --- 2. GET ALL RESOURCES (Filtered by Jurisdiction) ---
+// --- 2. GET ALL RESOURCES ---
 exports.getAllResources = async (req, res) => {
     try {
         const { search, category, departmentId, trending, mine, status } = req.query;
@@ -71,11 +69,8 @@ exports.getAllResources = async (req, res) => {
         if (mine === 'true') {
             queryParams.push(req.user.id);
             conditions.push(`r.uploader_id = $${queryParams.length}`);
-            conditions.push(`r.deleted_by_user = false`); 
-        } else if (status === 'pending') {
-            conditions.push(`r.status = 'pending'`);
         } else {
-            conditions.push(`r.status = 'approved'`);
+            conditions.push(`r.status = '${status === 'pending' ? 'pending' : 'approved'}'`);
         }
 
         if (search) {
@@ -96,52 +91,61 @@ exports.getAllResources = async (req, res) => {
         if (conditions.length > 0) queryText += ` WHERE ` + conditions.join(' AND ');
 
         queryText += trending === 'true' 
-            ? ` ORDER BY r.download_count DESC, r.created_at DESC LIMIT 20` 
+            ? ` ORDER BY r.download_count DESC LIMIT 20` 
             : ` ORDER BY r.created_at DESC`;
 
         const resources = await pool.query(queryText, queryParams);
         res.json(resources.rows);
     } catch (err) {
-        console.error("Fetch Error:", err);
         res.status(500).json({ message: "Error fetching library data" });
     }
 };
 
-// --- 3. STUDENT: REQUEST DELETION ---
-exports.requestDeletion = async (req, res) => {
+// --- 3. REQUEST HUB LOGIC ---
+exports.createRequest = async (req, res) => {
     try {
-        const { id } = req.params;
-        const userId = req.user.id;
-
-        await pool.query(
-            'UPDATE resources SET deleted_by_user = true WHERE id = $1 AND uploader_id = $2',
-            [id, userId]
+        const { title, description, departmentId } = req.body;
+        const result = await pool.query(
+            `INSERT INTO resource_requests (requester_id, department_id, title, description) 
+             VALUES ($1, $2, $3, $4) RETURNING *`,
+            [req.user.id, departmentId, title, description]
         );
-
-        await pool.query(
-            'INSERT INTO deletion_requests (resource_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-            [id, userId]
-        );
-
-        res.json({ message: "File removed. Lecturer notified for permanent purge." });
+        res.status(201).json(result.rows[0]);
     } catch (err) {
-        res.status(500).json({ message: "Error processing deletion request" });
+        res.status(500).json({ message: "Failed to post request" });
     }
 };
 
-// --- 4. STAFF: APPROVE RESOURCE ---
+exports.getRequests = async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT rr.*, u.full_name as student_name, d.name as department_name 
+            FROM resource_requests rr
+            JOIN users u ON rr.requester_id = u.id
+            JOIN departments d ON rr.department_id = d.id
+            WHERE rr.is_fulfilled = false
+            ORDER BY rr.created_at DESC
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ message: "Error fetching requests" });
+    }
+};
+
+exports.fulfillRequest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('UPDATE resource_requests SET is_fulfilled = true WHERE id = $1', [id]);
+        res.json({ message: "Request marked as fulfilled!" });
+    } catch (err) {
+        res.status(500).json({ message: "Error updating request" });
+    }
+};
+
+// --- 4. ADMIN & DELETION ---
 exports.approveResource = async (req, res) => {
     try {
         const { id } = req.params;
-        const lecturerDept = req.user.department_id;
-
-        const check = await pool.query('SELECT department_id FROM resources WHERE id = $1', [id]);
-        if (check.rows.length === 0) return res.status(404).json({ message: "Resource not found." });
-        
-        if (check.rows[0].department_id !== lecturerDept) {
-            return res.status(403).json({ message: "Outside your jurisdiction." });
-        }
-
         await pool.query("UPDATE resources SET status = 'approved' WHERE id = $1", [id]);
         res.json({ message: "Resource approved!" });
     } catch (err) {
@@ -149,39 +153,42 @@ exports.approveResource = async (req, res) => {
     }
 };
 
-// --- 5. STAFF: PERMANENT PURGE (Works for Rejections & Student Deletions) ---
 exports.permanentDelete = async (req, res) => {
     try {
         const { id } = req.params;
-        const lecturerDept = req.user.department_id;
-        
-        const resource = await pool.query('SELECT file_url, department_id FROM resources WHERE id = $1', [id]);
-        
-        if (resource.rows.length === 0) return res.status(404).json({ message: "Resource not found." });
-
-        if (resource.rows[0].department_id !== lecturerDept) {
-            return res.status(403).json({ message: "Jurisdiction error: Denied." });
-        }
-
-        // Delete physical file from 'uploads/' folder
-        if (fs.existsSync(resource.rows[0].file_url)) {
+        const resource = await pool.query('SELECT file_url FROM resources WHERE id = $1', [id]);
+        if (resource.rows.length > 0 && fs.existsSync(resource.rows[0].file_url)) {
             fs.unlinkSync(resource.rows[0].file_url);
         }
-
-        // Wipe record (Deletion request table will cascade delete if foreign key is set to CASCADE)
         await pool.query("DELETE FROM resources WHERE id = $1", [id]);
-        res.json({ message: "File purged from disk and database." });
+        res.json({ message: "Purged successfully." });
     } catch (err) {
-        console.error("Purge Error:", err);
         res.status(500).json({ message: "Purge failed" });
     }
 };
 
-// --- 6. STAFF: GET DELETION INBOX ---
+exports.incrementDownload = async (req, res) => {
+    try {
+        await pool.query('UPDATE resources SET download_count = download_count + 1 WHERE id = $1', [req.params.id]);
+        res.status(200).json({ message: "Success" });
+    } catch (err) {
+        res.status(500).json({ message: "Error" });
+    }
+};
+
+exports.requestDeletion = async (req, res) => {
+    try {
+        await pool.query('INSERT INTO deletion_requests (resource_id, user_id) VALUES ($1, $2)', [req.params.id, req.user.id]);
+        res.json({ message: "Deletion request sent to Lecturer." });
+    } catch (err) {
+        res.status(500).json({ message: "Request failed" });
+    }
+};
+
 exports.getDeletionRequests = async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT dr.*, r.title, r.category, u.full_name as student_name, r.id as resource_id
+            SELECT dr.*, r.title, u.full_name as student_name
             FROM deletion_requests dr
             JOIN resources r ON dr.resource_id = r.id
             JOIN users u ON dr.user_id = u.id
@@ -189,15 +196,6 @@ exports.getDeletionRequests = async (req, res) => {
         `, [req.user.department_id]);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: "Failed to fetch inbox" });
-    }
-};
-
-exports.incrementDownload = async (req, res) => {
-    try {
-        await pool.query('UPDATE resources SET download_count = download_count + 1 WHERE id = $1', [req.params.id]);
-        res.status(200).json({ message: "Heat increased!" });
-    } catch (err) {
-        res.status(500).json({ message: "Error updating stats" });
+        res.status(500).json({ message: "Failed to fetch requests" });
     }
 };

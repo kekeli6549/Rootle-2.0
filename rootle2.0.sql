@@ -1,10 +1,10 @@
--- 1. Create the Departments table (Must be first)
+-- 1. DEPARTMENTS
 CREATE TABLE IF NOT EXISTS departments (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(100) UNIQUE NOT NULL
+    name VARCHAR(255) NOT NULL UNIQUE
 );
 
--- 2. Create the Users table
+-- 2. USERS
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     full_name VARCHAR(255) NOT NULL,
@@ -17,23 +17,42 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 3. Create the Resources table (The one causing the error)
+-- 3. RESOURCES (The Vault)
 CREATE TABLE IF NOT EXISTS resources (
     id SERIAL PRIMARY KEY,
-    uploader_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    uploader_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
     title TEXT NOT NULL,
     category TEXT NOT NULL,
     file_url TEXT NOT NULL,
-    file_hash TEXT UNIQUE,
     file_type TEXT,
     status TEXT DEFAULT 'pending',
     download_count INTEGER DEFAULT 0,
-    deleted_by_user BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 4. Create Deletion Requests
+-- 4. RESOURCE REQUESTS (The Wishlist/Hub)
+CREATE TABLE IF NOT EXISTS resource_requests (
+    id SERIAL PRIMARY KEY,
+    requester_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    department_id INTEGER REFERENCES departments(id),
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    is_fulfilled BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 5. REVIEWS (Ratings & Feedback)
+CREATE TABLE IF NOT EXISTS reviews (
+    id SERIAL PRIMARY KEY,
+    resource_id INTEGER REFERENCES resources(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    rating INTEGER CHECK (rating >= 1 AND rating <= 5),
+    comment TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 6. DELETION LOGIC (Purge Management)
 CREATE TABLE IF NOT EXISTS deletion_requests (
     id SERIAL PRIMARY KEY,
     resource_id INTEGER REFERENCES resources(id) ON DELETE CASCADE,
@@ -42,29 +61,38 @@ CREATE TABLE IF NOT EXISTS deletion_requests (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. Add some departments so the app doesn't crash on registration
-INSERT INTO departments (name) 
-VALUES ('Computer Science'), ('Medicine'), ('Law'), ('Engineering'), ('Art')
+-- 7. SEED DATA & CONSTRAINTS
+INSERT INTO departments (name) VALUES 
+('Computer Science'), ('Law'), ('Medicine'), ('Business Administration'), ('General Studies')
 ON CONFLICT (name) DO NOTHING;
 
--- 1. Remove the old restriction if it exists
-ALTER TABLE deletion_requests 
-DROP CONSTRAINT IF EXISTS deletion_requests_resource_id_fkey;
+-- Final constraint check for the Resources table
+ALTER TABLE resources 
+DROP CONSTRAINT IF EXISTS resources_department_id_fkey;
 
--- 2. Add the Cascade rule
-ALTER TABLE deletion_requests 
-ADD CONSTRAINT deletion_requests_resource_id_fkey 
-FOREIGN KEY (resource_id) 
-REFERENCES resources(id) 
-ON DELETE CASCADE;
+INSERT INTO departments (name) VALUES ('Computer Science'), ('Law'), ('Medicine'), ('Business Administration'), ('General Studies') ON CONFLICT DO NOTHING;
 
 ALTER TABLE resources 
-DROP CONSTRAINT IF EXISTS resources_uploader_id_fkey;
+ADD CONSTRAINT resources_department_id_fkey 
+FOREIGN KEY (department_id) 
+REFERENCES departments(id) 
+ON DELETE SET NULL;
 
-ALTER TABLE resources 
-ADD CONSTRAINT resources_uploader_id_fkey 
-FOREIGN KEY (uploader_id) 
-REFERENCES users(id) 
-ON DELETE CASCADE;
+CREATE TABLE IF NOT EXISTS departments (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE
+);
 
-UPDATE users SET department_id = 1 WHERE email = 'student@email.com';
+INSERT INTO departments (name) VALUES 
+('Computer Science'), ('Law'), ('Medicine'), ('Business Administration'), ('General Studies')
+ON CONFLICT DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS resource_requests (
+    id SERIAL PRIMARY KEY,
+    requester_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    department_id INTEGER REFERENCES departments(id),
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    is_fulfilled BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

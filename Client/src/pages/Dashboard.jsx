@@ -102,9 +102,9 @@ const showToast = (msg, type = 'success') => {
         });
        if (response.ok) {
       setResources(prev => prev.filter(res => res.id !== resId));
-      showToast("REMOVAL REQUEST SENT TO LECTURER", "success"); // <--- NEW
+      showToast("REMOVAL REQUEST SENT TO LECTURER", "success"); 
     } else {
-      showToast("FAILED TO SEND REQUEST", "error"); // <--- NEW
+      showToast("FAILED TO SEND REQUEST", "error"); 
     }
   } catch (err) {
     showToast("NETWORK ERROR", "error");
@@ -130,6 +130,17 @@ const showToast = (msg, type = 'success') => {
               {item}
             </motion.div>
           ))}
+
+          {/* REQUEST HUB NAVIGATION */}
+          <motion.div 
+            whileHover={{ x: 10, color: "#bf953f" }}
+            onClick={() => navigate('/requests')}
+            className="cursor-pointer font-display uppercase text-[11px] font-black tracking-[0.15em] flex items-center gap-4 transition-colors text-gold-leaf mt-8 pt-4 border-t border-timber-600/30"
+          >
+            <span className="text-lg">🤝</span>
+            Request Hub
+          </motion.div>
+
           <button onClick={() => { logout(); navigate('/login'); }} className="mt-4 text-[10px] font-black uppercase text-red-400 hover:text-red-200 transition-colors text-left">
             Exit System
           </button>
@@ -251,25 +262,19 @@ const showToast = (msg, type = 'success') => {
         </div>
       </main>
 
-<div className="flex min-h-screen bg-[#F5F5DC]">
-    {/* ... all your other code ... */}
-    
-    <Toast 
-      isVisible={toast.show} 
-      message={toast.message} 
-      type={toast.type} 
-      onClose={() => setToast({ ...toast, show: false })} 
-    />
-  </div>
-  
+      <Toast 
+        isVisible={toast.show} 
+        message={toast.message} 
+        type={toast.type} 
+        onClose={() => setToast({ ...toast, show: false })} 
+      />
+      
       <AnimatePresence>
         {isModalOpen && (
           <UploadModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
         )}
       </AnimatePresence>
     </div>
-
-    
   );
 };
 

@@ -1,0 +1,14 @@
+Things to fix in project
+
+You have to fix from the upload for both the student and lecturer
+1. Fix student upload to make sure it goes through the checking of the department specific side then when approved shows
+in both world view and department specific view page and if its checked multiple times let it  be shown multiple times
+
+2. For the lecturer when a resource is uploaded successfully let it show on both the student and lecturers deparment view and world view
+
+3. Let the files uploaded be able to be downloaded, by both parties.
+
+4. let lecturer be able  to view sent files to cross check it and approve/disapprove it or delete it where necessary
+
+5. let the User experience to reach dashboard be for student : register -> login -> dashboard  , then for lecturers(admin)
+: register -> admin login -> admin dashboard 

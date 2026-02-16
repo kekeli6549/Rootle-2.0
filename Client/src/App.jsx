@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 // Components
-import ErrorBoundary from './components/ErrorBoundary'; // Import our new safety net
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Page Imports
 import Landing from './pages/Landing';
@@ -12,6 +12,7 @@ import Register from './pages/Register';
 import AdminLogin from './pages/AdminLogin';
 import Dashboard from './pages/Dashboard';
 import LecturerDashboard from './pages/LecturerDashboard';
+import RequestHub from './pages/RequestHub'; // NEW IMPORT
 
 const ProtectedRoute = ({ children, allowedRole }) => {
   const { user, loading } = useAuth();
@@ -35,7 +36,7 @@ const ProtectedRoute = ({ children, allowedRole }) => {
 
 function App() {
   return (
-    <ErrorBoundary> {/* The safety net wraps everything */}
+    <ErrorBoundary>
       <AuthProvider> 
         <Router>
           <Routes>
@@ -44,6 +45,7 @@ function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/admin" element={<AdminLogin />} />
             
+            {/* STUDENT DASHBOARD */}
             <Route 
               path="/dashboard/student" 
               element={
@@ -52,21 +54,20 @@ function App() {
                 </ProtectedRoute>
               } 
             />
-            
-            {/* IMPORTANT: We point both paths to LecturerDashboard 
-               because 'AdminDashboard' is not defined in your files yet.
-            */}
+
+            {/* REQUEST HUB (Accessible by everyone logged in) */}
             <Route 
-              path="/dashboard/lecturer" 
+              path="/requests" 
               element={
-                <ProtectedRoute allowedRole="staff">
-                  <LecturerDashboard />
+                <ProtectedRoute>
+                  <RequestHub />
                 </ProtectedRoute>
               } 
             />
-
+            
+            {/* LECTURER DASHBOARD */}
             <Route 
-              path="/dashboard/admin" 
+              path="/dashboard/lecturer" 
               element={
                 <ProtectedRoute allowedRole="staff">
                   <LecturerDashboard />
