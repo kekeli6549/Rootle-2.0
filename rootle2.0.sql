@@ -1,10 +1,11 @@
--- 1. DEPARTMENTS
+-- =============================================
+-- 1. BASE TABLES (Departments & Users)
+-- =============================================
 CREATE TABLE IF NOT EXISTS departments (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE
 );
 
--- 2. USERS
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     full_name VARCHAR(255) NOT NULL,
@@ -17,7 +18,9 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 3. RESOURCES (The Vault)
+-- =============================================
+-- 2. RESOURCES & RATINGS
+-- =============================================
 CREATE TABLE IF NOT EXISTS resources (
     id SERIAL PRIMARY KEY,
     uploader_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -26,98 +29,69 @@ CREATE TABLE IF NOT EXISTS resources (
     category TEXT NOT NULL,
     file_url TEXT NOT NULL,
     file_type TEXT,
+    file_hash TEXT, -- Added for duplicate prevention
     status TEXT DEFAULT 'pending',
     download_count INTEGER DEFAULT 0,
+    average_rating DECIMAL(3,2) DEFAULT 0.00,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 4. RESOURCE REQUESTS (The Wishlist/Hub)
+CREATE TABLE IF NOT EXISTS resource_ratings (
+    id SERIAL PRIMARY KEY,
+    resource_id INTEGER REFERENCES resources(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id),
+    rating_value INTEGER CHECK (rating_value >= 1 AND rating_value <= 5),
+    UNIQUE(resource_id, user_id)
+);
+
+-- =============================================
+-- 3. THE HUB (Resource Requests) - FORCE UPDATE
+-- =============================================
 CREATE TABLE IF NOT EXISTS resource_requests (
     id SERIAL PRIMARY KEY,
     requester_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     department_id INTEGER REFERENCES departments(id),
     title VARCHAR(255) NOT NULL,
     description TEXT,
-    is_fulfilled BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. REVIEWS (Ratings & Feedback)
-CREATE TABLE IF NOT EXISTS reviews (
-    id SERIAL PRIMARY KEY,
-    resource_id INTEGER REFERENCES resources(id) ON DELETE CASCADE,
-    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    rating INTEGER CHECK (rating >= 1 AND rating <= 5),
-    comment TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- 6. DELETION LOGIC (Purge Management)
-CREATE TABLE IF NOT EXISTS deletion_requests (
-    id SERIAL PRIMARY KEY,
-    resource_id INTEGER REFERENCES resources(id) ON DELETE CASCADE,
-    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    status TEXT DEFAULT 'pending',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- 7. SEED DATA & CONSTRAINTS
-INSERT INTO departments (name) VALUES 
-('Computer Science'), ('Law'), ('Medicine'), ('Business Administration'), ('General Studies'), ('Engineering')
-ON CONFLICT (name) DO NOTHING;
-
--- Final constraint check for the Resources table
-ALTER TABLE resources 
-DROP CONSTRAINT IF EXISTS resources_department_id_fkey;
-
-INSERT INTO departments (name) VALUES ('Computer Science'), ('Law'), ('Medicine'), ('Business Administration'), ('General Studies'), ('Engineering') ON CONFLICT DO NOTHING;
-
-ALTER TABLE resources 
-ADD CONSTRAINT resources_department_id_fkey 
-FOREIGN KEY (department_id) 
-REFERENCES departments(id) 
-ON DELETE SET NULL;
-
-CREATE TABLE IF NOT EXISTS departments (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL UNIQUE
-);
-
-INSERT INTO departments (name) VALUES 
-('Computer Science'), 
-('Law'), 
-('Medicine'), 
-('Business Administration'), 
-('General Studies'),
-('Engineering');
-
--- Ensure fulfillment tracking is active
+-- FORCE ADD MISSING COLUMNS (This is the permanent fix)
 ALTER TABLE resource_requests ADD COLUMN IF NOT EXISTS is_fulfilled BOOLEAN DEFAULT false;
-ALTER TABLE resource_requests ADD COLUMN IF NOT EXISTS fulfilled_by INTEGER REFERENCES users(id);
+ALTER TABLE resource_requests ADD COLUMN IF NOT EXISTS fulfilled_by INTEGER;
+ALTER TABLE resource_requests ADD COLUMN IF NOT EXISTS fulfilled_at TIMESTAMP;
 
--- Ensure file hash is active to prevent 500 errors on duplicates
-ALTER TABLE resources ADD COLUMN IF NOT EXISTS file_hash TEXT;
+-- FORCE ADD FOREIGN KEY (Linked to Users)
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_fulfilled_by') THEN
+        ALTER TABLE resource_requests 
+        ADD CONSTRAINT fk_fulfilled_by 
+        FOREIGN KEY (fulfilled_by) REFERENCES users(id) ON DELETE SET NULL;
+    END IF;
+END $$;
 
-ALTER TABLE resource_requests 
-ADD COLUMN IF NOT EXISTS fulfilled_at TIMESTAMP,
-ADD COLUMN IF NOT EXISTS fulfilled_by INTEGER REFERENCES users(id);
-
+-- =============================================
+-- 4. DELETION LOGIC
+-- =============================================
 CREATE TABLE IF NOT EXISTS deletion_requests (
     id SERIAL PRIMARY KEY,
     resource_id INTEGER REFERENCES resources(id) ON DELETE CASCADE,
     user_id INTEGER REFERENCES users(id),
     reason TEXT,
+    status TEXT DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create a table to track individual ratings
-CREATE TABLE IF NOT EXISTS resource_ratings (
-    id SERIAL PRIMARY KEY,
-    resource_id INTEGER REFERENCES resources(id) ON DELETE CASCADE,
-    user_id INTEGER REFERENCES users(id),
-    rating_value INTEGER CHECK (rating_value >= 1 AND rating_value <= 5),
-    UNIQUE(resource_id, user_id) -- One rating per student per file
-);
+-- =============================================
+-- 5. SEED DATA
+-- =============================================
+INSERT INTO departments (name) VALUES 
+('Computer Science'), ('Law'), ('Medicine'), ('Business Administration'), ('General Studies'), ('Engineering')
+ON CONFLICT (name) DO NOTHING;
 
--- Add a column to resources to cache the average for faster loading
-ALTER TABLE resources ADD COLUMN IF NOT EXISTS average_rating DECIMAL(3,2) DEFAULT 0.00;
+-- Final Verification Check
+SELECT column_name, data_type 
+FROM information_schema.columns 
+WHERE table_name = 'resource_requests' 
+AND column_name IN ('is_fulfilled', 'fulfilled_by', 'fulfilled_at');

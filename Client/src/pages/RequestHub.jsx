@@ -1,4 +1,3 @@
-// src/pages/RequestHub.jsx
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -75,50 +74,63 @@ const RequestHub = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {requests.map((req) => (
-          <motion.div key={req.id} className="bg-[#FFF8E1] p-6 rounded-2xl border-4 border-[#3E2723] flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-start mb-4">
-                <span className="bg-[#D7CCC8] px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest text-[#3E2723]">{req.department_name || 'General'}</span>
-                <span className="text-xs font-bold text-[#8D6E63]">{new Date(req.created_at).toLocaleDateString()}</span>
+        <AnimatePresence mode='popLayout'>
+          {requests.map((req) => (
+            <motion.div 
+              layout
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
+              key={req.id} 
+              className="bg-[#FFF8E1] p-6 rounded-2xl border-4 border-[#3E2723] flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex justify-between items-start mb-4">
+                  <span className="bg-[#D7CCC8] px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest text-[#3E2723]">{req.department_name || 'General'}</span>
+                  <span className="text-xs font-bold text-[#8D6E63]">{new Date(req.created_at).toLocaleDateString()}</span>
+                </div>
+                <h3 className="text-xl font-black text-[#3E2723] leading-tight mb-2 uppercase">{req.title}</h3>
+                <p className="text-[#5D4037] text-sm mb-6">{req.description}</p>
               </div>
-              <h3 className="text-xl font-black text-[#3E2723] leading-tight mb-2 uppercase">{req.title}</h3>
-              <p className="text-[#5D4037] text-sm mb-6">{req.description}</p>
-            </div>
-            <div className="pt-4 border-t-2 border-[#3E2723]/10 flex justify-between items-center">
-              <span className="text-[10px] font-bold text-[#3E2723]">By {req.student_name?.split(' ')[0]}</span>
-              <button onClick={() => openFulfillUpload(req.id)} className="text-[10px] font-black bg-[#2E7D32] text-white px-3 py-1 rounded-lg">Fulfill ✓</button>
-            </div>
-          </motion.div>
-        ))}
+              <div className="pt-4 border-t-2 border-[#3E2723]/10 flex justify-between items-center">
+                <span className="text-[10px] font-bold text-[#3E2723]">By {req.student_name?.split(' ')[0]}</span>
+                <button onClick={() => openFulfillUpload(req.id)} className="text-[10px] font-black bg-[#2E7D32] text-white px-4 py-2 rounded-lg hover:bg-[#1B5E20] transition-colors">Fulfill ✓</button>
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
 
-      {/* Upload Modal for Fulfilling */}
       <AnimatePresence>
         {showUploadModal && (
           <UploadModal 
             isOpen={showUploadModal} 
             onClose={() => setShowUploadModal(false)}
-            onUploadSuccess={() => { fetchHubData(); setShowUploadModal(false); }}
-            fulfillRequestId={activeRequestId} // Passing Request ID
+            onUploadSuccess={(msg) => { 
+              // JAW-DROPPING UI: Remove the card from the list immediately
+              setRequests(prev => prev.filter(r => r.id !== activeRequestId));
+              setShowUploadModal(false); 
+              // Silently refresh data in background to ensure sync
+              fetchHubData();
+            }}
+            fulfillRequestId={activeRequestId} 
           />
         )}
       </AnimatePresence>
 
-      {/* New Request Modal */}
       <AnimatePresence>
         {showRequestModal && (
-          <motion.div className="fixed inset-0 bg-[#3E2723]/80 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowRequestModal(false)}>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-[#3E2723]/80 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowRequestModal(false)}>
             <motion.div onClick={(e) => e.stopPropagation()} className="bg-[#F5F5DC] w-full max-w-lg p-8 rounded-[30px] border-4 border-[#FFF]">
               <h2 className="text-3xl font-black text-[#3E2723] mb-6">Make a Wish.</h2>
               <form onSubmit={handlePostRequest} className="flex flex-col gap-4">
-                <input required placeholder="Document Name" className="bg-white border-2 border-[#3E2723] p-4 rounded-xl font-bold" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
-                <textarea required placeholder="Description" className="bg-white border-2 border-[#3E2723] p-4 rounded-xl font-medium" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
-                <select className="bg-white border-2 border-[#3E2723] p-4 rounded-xl font-bold" value={formData.departmentId} onChange={e => setFormData({...formData, departmentId: e.target.value})}>
+                <input required placeholder="Document Name" className="bg-white border-2 border-[#3E2723] p-4 rounded-xl font-bold focus:outline-none focus:ring-2 focus:ring-[#8D6E63]" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                <textarea required placeholder="Description" className="bg-white border-2 border-[#3E2723] p-4 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-[#8D6E63] h-32" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+                <select className="bg-white border-2 border-[#3E2723] p-4 rounded-xl font-bold focus:outline-none" value={formData.departmentId} onChange={e => setFormData({...formData, departmentId: e.target.value})}>
                     <option value="">Select Faculty</option>
                     {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
-                <button type="submit" className="bg-[#3E2723] text-[#F5F5DC] py-4 rounded-xl font-black text-xl">Post Request</button>
+                <button type="submit" className="bg-[#3E2723] text-[#F5F5DC] py-4 rounded-xl font-black text-xl hover:scale-[1.02] active:scale-[0.98] transition-transform shadow-lg">Post Request</button>
               </form>
             </motion.div>
           </motion.div>

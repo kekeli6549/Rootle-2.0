@@ -2,31 +2,35 @@ const pool = require('../config/db');
 const crypto = require('crypto');
 const fs = require('fs');
 
-// --- 1. UPLOAD RESOURCE ---
+// --- 1. UPLOAD RESOURCE (STABILIZED & PERMANENT FIX) ---
 exports.uploadResource = async (req, res) => {
+    let filePath = req.file ? req.file.path : null;
     try {
         if (!req.file) return res.status(400).json({ message: "No file selected." });
+        
         const { title, category, requestId } = req.body; 
         const uploaderId = req.user.id; 
-        const filePath = req.file.path;
 
+        // Get uploader's department
         const userResult = await pool.query('SELECT department_id FROM users WHERE id = $1', [uploaderId]);
         const departmentId = userResult.rows[0]?.department_id;
 
         if (!departmentId) {
-            if (fs.existsSync(filePath)) fs.unlinkSync(filePath); 
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath); 
             return res.status(400).json({ message: "Account not linked to a department." });
         }
 
+        // Duplicate Check via Hash
         const fileBuffer = fs.readFileSync(filePath);
         const fileHash = crypto.createHash('md5').update(fileBuffer).digest('hex');
         const existingFile = await pool.query('SELECT id FROM resources WHERE file_hash = $1', [fileHash]);
 
         if (existingFile.rows.length > 0) {
-            if (fs.existsSync(filePath)) fs.unlinkSync(filePath); 
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath); 
             return res.status(400).json({ message: "Duplicate alert: File already exists." });
         }
 
+        // Insert into resources
         const newResource = await pool.query(
             `INSERT INTO resources 
             (uploader_id, department_id, title, category, file_url, file_hash, file_type, status) 
@@ -34,27 +38,40 @@ exports.uploadResource = async (req, res) => {
             [uploaderId, departmentId, title, category, filePath, fileHash, req.file.mimetype]
         );
 
+        // --- PERMANENT FULFILLMENT FIX ---
         const parsedRequestId = parseInt(requestId);
         if (requestId && !isNaN(parsedRequestId)) {
-            await pool.query(
-                'UPDATE resource_requests SET is_fulfilled = true, fulfilled_by = $1, fulfilled_at = NOW() WHERE id = $2', 
-                [uploaderId, parsedRequestId]
-            );
+            try {
+                // Using explicit column names to match the ALTER TABLE command
+                await pool.query(
+                    `UPDATE resource_requests 
+                     SET is_fulfilled = true, 
+                         fulfilled_by = $1, 
+                         fulfilled_at = CURRENT_TIMESTAMP 
+                     WHERE id = $2`, 
+                    [uploaderId, parsedRequestId]
+                );
+                console.log(`✅ Success: Request ${parsedRequestId} fulfilled by ${uploaderId}`);
+            } catch (fulfillmentErr) {
+                // If this fails, the file is still saved, but we log the specific DB issue
+                console.error("❌ DB SCHEMA ERROR:", fulfillmentErr.message);
+                console.error("Hint: Ensure you ran the ALTER TABLE command in pgAdmin.");
+            }
         }
+
         res.status(201).json(newResource.rows[0]);
     } catch (err) {
-        console.error("Upload Error:", err.message);
-        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        console.error("CRITICAL BACKEND ERROR:", err.message);
+        if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
         res.status(500).json({ message: "Internal Server Error", details: err.message });
     }
 };
 
-// --- 2. GET ALL RESOURCES (STABILIZED) ---
+// --- 2. GET ALL RESOURCES ---
 exports.getAllResources = async (req, res) => {
     try {
         const { search, category, departmentId, status, trending, mine } = req.query;
         
-        // Stabilized Query: Added safety for missing ratings table
         let queryText = `
             SELECT r.*, u.full_name as uploader_name, d.name as department_name,
             0 as average_rating
@@ -63,7 +80,6 @@ exports.getAllResources = async (req, res) => {
             LEFT JOIN departments d ON r.department_id = d.id
         `;
         
-        // Check if resource_ratings table exists before trying to query it
         try {
             const tableCheck = await pool.query("SELECT to_regclass('public.resource_ratings')");
             if (tableCheck.rows[0].to_regclass) {
@@ -75,9 +91,7 @@ exports.getAllResources = async (req, res) => {
                     LEFT JOIN departments d ON r.department_id = d.id
                 `;
             }
-        } catch (e) {
-            console.log("ℹ️ Ratings table not yet initialized, skipping ratings subquery.");
-        }
+        } catch (e) { console.log("Ratings table skip."); }
         
         let queryParams = [];
         let conditions = [];
@@ -86,8 +100,7 @@ exports.getAllResources = async (req, res) => {
             queryParams.push(req.user.id);
             conditions.push(`r.uploader_id = $${queryParams.length}`);
         } else {
-            const currentStatus = (status === 'pending') ? 'pending' : 'approved';
-            queryParams.push(currentStatus);
+            queryParams.push(status === 'pending' ? 'pending' : 'approved');
             conditions.push(`r.status = $${queryParams.length}`);
         }
 
@@ -106,25 +119,73 @@ exports.getAllResources = async (req, res) => {
             conditions.push(`r.department_id = $${queryParams.length}`);
         }
 
-        if (conditions.length > 0) {
-            queryText += ` WHERE ` + conditions.join(' AND ');
-        }
-        
-        if (trending === 'true') {
-            queryText += ` ORDER BY r.download_count DESC`;
-        } else {
-            queryText += ` ORDER BY r.created_at DESC`;
-        }
+        if (conditions.length > 0) queryText += ` WHERE ` + conditions.join(' AND ');
+        queryText += trending === 'true' ? ` ORDER BY r.download_count DESC` : ` ORDER BY r.created_at DESC`;
 
         const resources = await pool.query(queryText, queryParams);
         res.json(resources.rows || []);
     } catch (err) {
-        console.error("Database Query Error:", err.message);
-        res.status(500).json({ message: "Internal Server Error", details: err.message });
+        res.status(500).json({ message: "Error fetching resources" });
     }
 };
 
-// --- 3. STATS & RATINGS ---
+// --- 3. GET HUB REQUESTS ---
+exports.getRequests = async (req, res) => {
+    try {
+        const { departmentId } = req.query;
+        let query = `
+            SELECT rr.*, u.full_name as student_name, d.name as department_name 
+            FROM resource_requests rr 
+            LEFT JOIN users u ON rr.requester_id = u.id 
+            LEFT JOIN departments d ON rr.department_id = d.id
+            WHERE rr.is_fulfilled = false`;
+        
+        let params = [];
+        if (departmentId && departmentId !== 'undefined' && departmentId !== 'null') {
+            params.push(departmentId);
+            query += ` AND rr.department_id = $${params.length}`;
+        }
+        
+        const result = await pool.query(query + ` ORDER BY rr.created_at DESC`, params);
+        res.json(result.rows || []);
+    } catch (err) {
+        console.error("Get Requests Error:", err.message);
+        res.status(500).json([]);
+    }
+};
+
+// --- 4. CREATE REQUEST ---
+exports.createRequest = async (req, res) => {
+    try {
+        const { title, description, departmentId } = req.body;
+        const result = await pool.query(
+            `INSERT INTO resource_requests (requester_id, department_id, title, description) 
+             VALUES ($1, $2, $3, $4) RETURNING *`,
+            [req.user.id, departmentId || null, title, description]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) { res.status(500).json({ message: "Request failure" }); }
+};
+
+// --- 5. FULFILL REQUEST (MANUAL OVERRIDE) ---
+exports.fulfillRequest = async (req, res) => {
+    try {
+        await pool.query(
+            `UPDATE resource_requests 
+             SET is_fulfilled = true, 
+                 fulfilled_by = $1, 
+                 fulfilled_at = CURRENT_TIMESTAMP 
+             WHERE id = $2`, 
+            [req.user.id, req.params.id]
+        );
+        res.json({ message: "Handled! 🤝" });
+    } catch (err) { 
+        console.error("Manual Fulfillment Error:", err.message);
+        res.status(500).json({ message: "Fulfillment failed" }); 
+    }
+};
+
+// --- 6. STATS ---
 exports.getDepartmentStats = async (req, res) => {
     try {
         let deptId = req.user.department_id;
@@ -132,7 +193,6 @@ exports.getDepartmentStats = async (req, res) => {
             const user = await pool.query('SELECT department_id FROM users WHERE id = $1', [req.user.id]);
             deptId = user.rows[0]?.department_id;
         }
-
         if (!deptId) return res.json({ total_downloads: 0, total_resources: 0, open_requests: 0 });
 
         const result = await pool.query(`
@@ -144,84 +204,35 @@ exports.getDepartmentStats = async (req, res) => {
             WHERE department_id = $1 AND status = 'approved'
         `, [deptId]);
         res.json(result.rows[0]);
-    } catch (err) {
-        console.error("Stats Error:", err.message);
-        res.status(500).json({ message: "Stats failure" });
-    }
+    } catch (err) { res.status(500).json({ message: "Stats failure" }); }
 };
 
+// --- 7. RATINGS ---
 exports.rateResource = async (req, res) => {
     try {
         const { resourceId, rating } = req.body;
-        const userId = req.user.id;
         await pool.query(`
             INSERT INTO resource_ratings (resource_id, user_id, rating_value)
             VALUES ($1, $2, $3)
             ON CONFLICT (resource_id, user_id) DO UPDATE SET rating_value = EXCLUDED.rating_value
-        `, [resourceId, userId, rating]);
+        `, [resourceId, req.user.id, rating]);
         res.json({ message: "Rating recorded" });
-    } catch (err) {
-        res.status(500).json({ message: "Rating failure" });
-    }
+    } catch (err) { res.status(500).json({ message: "Rating failure" }); }
 };
 
-// --- 4. HUB & MANAGEMENT ---
-exports.createRequest = async (req, res) => {
-    try {
-        const { title, description, departmentId } = req.body;
-        const result = await pool.query(
-            `INSERT INTO resource_requests (requester_id, department_id, title, description) 
-             VALUES ($1, $2, $3, $4) RETURNING *`,
-            [req.user.id, departmentId || null, title, description]
-        );
-        res.status(201).json(result.rows[0]);
-    } catch (err) {
-        res.status(500).json({ message: "Request failure" });
-    }
-};
-
-exports.getRequests = async (req, res) => {
-    try {
-        const { departmentId } = req.query;
-        let query = `SELECT rr.*, u.full_name as student_name FROM resource_requests rr LEFT JOIN users u ON rr.requester_id = u.id WHERE rr.is_fulfilled = false`;
-        let params = [];
-        if (departmentId && departmentId !== 'undefined' && departmentId !== 'null') {
-            params.push(departmentId);
-            query += ` AND rr.department_id = $${params.length}`;
-        }
-        const result = await pool.query(query + ` ORDER BY rr.created_at DESC`, params);
-        res.json(result.rows || []);
-    } catch (err) {
-        console.error("Get Requests Error:", err.message);
-        res.status(500).json([]);
-    }
-};
-
-exports.fulfillRequest = async (req, res) => {
-    try {
-        await pool.query("UPDATE resource_requests SET is_fulfilled = true, fulfilled_by = $1, fulfilled_at = NOW() WHERE id = $2", [req.user.id, req.params.id]);
-        res.json({ message: "Handled! 🤝" });
-    } catch (err) {
-        res.status(500).json({ message: "Fulfillment failed" });
-    }
-};
-
+// --- 8. DELETION LOGIC ---
 exports.requestDeletion = async (req, res) => {
     try {
         await pool.query('INSERT INTO deletion_requests (resource_id, user_id) VALUES ($1, $2)', [req.params.id, req.user.id]);
         res.json({ message: "Review pending." });
-    } catch (err) {
-        res.status(500).json({ message: "Request failed" });
-    }
+    } catch (err) { res.status(500).json({ message: "Request failed" }); }
 };
 
 exports.rejectDeletion = async (req, res) => {
     try {
         await pool.query("DELETE FROM deletion_requests WHERE id = $1", [req.params.id]);
         res.json({ message: "Preserved." });
-    } catch (err) {
-        res.status(500).json({ message: "Failed" });
-    }
+    } catch (err) { res.status(500).json({ message: "Failed" }); }
 };
 
 exports.permanentDelete = async (req, res) => {
@@ -231,34 +242,27 @@ exports.permanentDelete = async (req, res) => {
         await pool.query("DELETE FROM deletion_requests WHERE resource_id = $1", [req.params.id]);
         await pool.query("DELETE FROM resources WHERE id = $1", [req.params.id]);
         res.json({ message: "Purged." });
-    } catch (err) {
-        res.status(500).json({ message: "Purge failed" });
-    }
+    } catch (err) { res.status(500).json({ message: "Purge failed" }); }
 };
 
 exports.getDeletionRequests = async (req, res) => {
     try {
         const result = await pool.query(`SELECT dr.id, r.title, u.full_name as student_name, r.id as resource_id FROM deletion_requests dr JOIN resources r ON dr.resource_id = r.id JOIN users u ON dr.user_id = u.id WHERE r.department_id = $1`, [req.user.department_id]);
         res.json(result.rows || []);
-    } catch (err) {
-        res.status(500).json([]);
-    }
+    } catch (err) { res.status(500).json([]); }
 };
 
+// --- 9. APPROVAL & DOWNLOADS ---
 exports.approveResource = async (req, res) => {
     try {
         await pool.query("UPDATE resources SET status = 'approved' WHERE id = $1", [req.params.id]);
         res.json({ message: "Approved!" });
-    } catch (err) {
-        res.status(500).json({ message: "Failed" });
-    }
+    } catch (err) { res.status(500).json({ message: "Failed" }); }
 };
 
 exports.incrementDownload = async (req, res) => {
     try {
         await pool.query('UPDATE resources SET download_count = download_count + 1 WHERE id = $1', [req.params.id]);
         res.json({ message: "Counted." });
-    } catch (err) {
-        res.status(500).json({ message: "Error" });
-    }
+    } catch (err) { res.status(500).json({ message: "Error" }); }
 };

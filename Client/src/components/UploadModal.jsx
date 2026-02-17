@@ -1,20 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 
-const UploadModal = ({ isOpen, onClose, onUploadSuccess, requestId = null, requestTitle = "" }) => {
+const UploadModal = ({ isOpen, onClose, onUploadSuccess, fulfillRequestId = null, requestTitle = "" }) => {
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState('Notes');
   const [uploading, setUploading] = useState(false);
 
-  // Sync title if it's a request fulfillment
   useEffect(() => {
-    if (requestTitle) {
-      setTitle(`RE: ${requestTitle}`);
-    }
+    if (requestTitle) setTitle(`RE: ${requestTitle}`);
   }, [requestTitle]);
-
-  const handleFileChange = (e) => setFile(e.target.files[0]);
 
   const handleUpload = async (e) => {
     e.preventDefault();
@@ -25,99 +20,69 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess, requestId = null, reque
     formData.append('file', file);
     formData.append('title', title);
     formData.append('category', category);
-    
-    // Links the upload to the Request Hub item
-    if (requestId) {
-      formData.append('requestId', requestId);
-    }
+    if (fulfillRequestId) formData.append('requestId', fulfillRequestId);
 
     try {
-      const token = localStorage.getItem('rootle_token');
-      
-      // FIX: We do NOT set 'Content-Type' here. 
-      // The browser must set it automatically for multipart/form-data.
       const response = await fetch('http://localhost:5000/api/resources/upload', {
         method: 'POST',
-        headers: { 
-          'x-auth-token': token 
-          // 'Content-Type': 'multipart/form-data' <- REMOVED THIS
-        },
+        headers: { 'x-auth-token': localStorage.getItem('rootle_token') },
         body: formData
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        onUploadSuccess("VAULT UPDATED & REQUEST FULFILLED! ⚡", "success");
+        // Safe check to prevent the TypeError in your console
+        if (onUploadSuccess && typeof onUploadSuccess === 'function') {
+          onUploadSuccess("VAULT UPDATED! ⚡", "success");
+        }
         onClose();
       } else {
         alert(data.message || "Upload failed");
       }
     } catch (err) {
-      console.error(err);
-      alert("System Error during upload.");
+      console.error("Upload UI Error:", err);
+      alert("System Error. Check your server logs.");
     } finally {
       setUploading(false);
     }
   };
 
   return (
-    <motion.div 
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-timber-900/80 backdrop-blur-sm p-4"
-    >
-      <motion.div 
-        initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
-        className="bg-[#F5F5DC] border-4 border-timber-800 p-8 rounded-[40px] w-full max-w-lg shadow-[20px_20px_0px_0px_rgba(62,39,35,1)]"
-      >
-        <h2 className="text-4xl font-display font-black text-timber-800 mb-2 uppercase tracking-tighter">Vault Entry.</h2>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-[#F5F5DC] border-4 border-[#3E2723] p-8 rounded-[40px] w-full max-w-lg shadow-[20px_20px_0px_0px_rgba(62,39,35,1)]">
+        <h2 className="text-4xl font-black text-[#3E2723] mb-2 uppercase tracking-tighter">Vault Entry.</h2>
         
-        {requestId && (
-          <div className="bg-red-100 border-2 border-red-200 p-2 rounded-xl mb-6">
-            <p className="text-[10px] font-black text-red-600 uppercase text-center">Fulfilling Hub Request #{requestId}</p>
+        {fulfillRequestId && (
+          <div className="bg-green-100 border-2 border-green-300 p-2 rounded-xl mb-6">
+            <p className="text-[10px] font-black text-green-700 uppercase text-center tracking-widest">
+                FULFILLING HUB REQUEST #{fulfillRequestId}
+            </p>
           </div>
         )}
 
         <form onSubmit={handleUpload} className="space-y-6">
           <div>
-            <label className="block text-[10px] font-black uppercase mb-2 text-timber-500">Resource Title</label>
-            <input 
-              type="text" value={title} onChange={(e) => setTitle(e.target.value)} required
-              className="w-full bg-white border-2 border-timber-800 p-4 rounded-2xl font-display font-black text-timber-800 focus:ring-4 ring-gold-leaf/20 outline-none"
-              placeholder="E.g. Advanced Tort Law Notes"
-            />
+            <label className="block text-[10px] font-black uppercase mb-2 text-[#5D4037]">Resource Title</label>
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required className="w-full bg-white border-2 border-[#3E2723] p-4 rounded-2xl font-bold text-[#3E2723] outline-none" placeholder="Title" />
           </div>
 
           <div>
-            <label className="block text-[10px] font-black uppercase mb-2 text-timber-500">Category</label>
-            <select 
-              value={category} onChange={(e) => setCategory(e.target.value)}
-              className="w-full bg-white border-2 border-timber-800 p-4 rounded-2xl font-display font-black text-timber-800 outline-none"
-            >
-              {/* FIX: Aligned strings with Dashboard.jsx categories */}
-              {['Notes', 'Past Questions', 'Research', 'Textbooks'].map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
+            <label className="block text-[10px] font-black uppercase mb-2 text-[#5D4037]">Category</label>
+            <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full bg-white border-2 border-[#3E2723] p-4 rounded-2xl font-bold text-[#3E2723] outline-none">
+              {['Notes', 'Past Questions', 'Research', 'Textbooks'].map(cat => <option key={cat} value={cat}>{cat}</option>)}
             </select>
           </div>
 
-          <div className="border-4 border-dashed border-timber-300 rounded-3xl p-8 text-center hover:border-gold-leaf transition-colors cursor-pointer relative">
-            <input type="file" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" />
-            <div className="flex flex-col items-center">
-              <span className="text-4xl mb-2">📂</span>
-              <p className="text-[10px] font-black text-timber-400 uppercase">
-                {file ? file.name : "Drop file or click to browse"}
-              </p>
-            </div>
+          <div className="border-4 border-dashed border-[#D7CCC8] rounded-3xl p-8 text-center relative hover:border-[#C5A059] transition-colors cursor-pointer">
+            <input type="file" onChange={(e) => setFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
+            <p className="font-black text-[#8D6E63] uppercase">{file ? file.name : "Select File 📂"}</p>
           </div>
 
           <div className="flex gap-4 pt-4">
-            <button type="button" onClick={onClose} className="flex-1 p-4 font-display font-black uppercase text-timber-400 hover:text-timber-800 transition-colors">Cancel</button>
-            <button 
-              type="submit" disabled={uploading}
-              className="flex-1 bg-gold-leaf border-2 border-timber-800 p-4 rounded-2xl font-display font-black uppercase text-timber-800 shadow-[4px_4px_0px_0px_rgba(62,39,35,1)] active:shadow-none active:translate-y-1 transition-all disabled:opacity-50"
-            >
-              {uploading ? "Verifying..." : "Verify & Deploy"}
+            <button type="button" onClick={onClose} className="flex-1 font-black text-[#8D6E63] uppercase">Cancel</button>
+            <button type="submit" disabled={uploading} className="flex-1 bg-[#C5A059] border-2 border-[#3E2723] p-4 rounded-2xl font-black uppercase text-[#3E2723] shadow-[4px_4px_0px_0px_rgba(62,39,35,1)]">
+              {uploading ? "Deploying..." : "Verify & Deploy"}
             </button>
           </div>
         </form>
