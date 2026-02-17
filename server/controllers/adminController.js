@@ -1,5 +1,6 @@
 // server/controllers/adminController.js
 const pool = require('../config/db');
+const fs = require('fs');
 
 exports.getDashboardStats = async (req, res) => {
     try {
@@ -40,5 +41,36 @@ exports.getDashboardStats = async (req, res) => {
     } catch (err) {
         console.error(err.message);
         res.status(500).send("Server Error fetching analytics");
+    }
+};
+
+// FIX: Added the missing permanentDelete function to resolve the Route crash
+exports.permanentDelete = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // 1. Get the file path first to delete from storage
+        const resource = await pool.query('SELECT file_url FROM resources WHERE id = $1', [id]);
+        
+        if (resource.rows.length === 0) {
+            return res.status(404).json({ message: "Resource not found" });
+        }
+
+        const filePath = resource.rows[0].file_url;
+
+        // 2. Delete file from physical storage (The Vault)
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+
+        // 3. Delete from database (deletion_requests and resources tables)
+        // Note: If you have ON DELETE CASCADE in your DB, deleting from resources is enough
+        await pool.query("DELETE FROM deletion_requests WHERE resource_id = $1", [id]);
+        await pool.query("DELETE FROM resources WHERE id = $1", [id]);
+
+        res.json({ message: "File purged successfully from system." });
+    } catch (err) {
+        console.error("Purge Error:", err.message);
+        res.status(500).json({ message: "Failed to permanently delete file" });
     }
 };

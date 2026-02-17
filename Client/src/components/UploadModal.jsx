@@ -1,11 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 
 const UploadModal = ({ isOpen, onClose, onUploadSuccess, requestId = null, requestTitle = "" }) => {
   const [file, setFile] = useState(null);
-  const [title, setTitle] = useState(requestTitle ? `RE: ${requestTitle}` : "");
+  const [title, setTitle] = useState("");
   const [category, setCategory] = useState('Notes');
   const [uploading, setUploading] = useState(false);
+
+  // Sync title if it's a request fulfillment
+  useEffect(() => {
+    if (requestTitle) {
+      setTitle(`RE: ${requestTitle}`);
+    }
+  }, [requestTitle]);
 
   const handleFileChange = (e) => setFile(e.target.files[0]);
 
@@ -19,16 +26,22 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess, requestId = null, reque
     formData.append('title', title);
     formData.append('category', category);
     
-    // CRITICAL: This links the upload to the Request Hub item
+    // Links the upload to the Request Hub item
     if (requestId) {
       formData.append('requestId', requestId);
     }
 
     try {
       const token = localStorage.getItem('rootle_token');
+      
+      // FIX: We do NOT set 'Content-Type' here. 
+      // The browser must set it automatically for multipart/form-data.
       const response = await fetch('http://localhost:5000/api/resources/upload', {
         method: 'POST',
-        headers: { 'x-auth-token': token },
+        headers: { 
+          'x-auth-token': token 
+          // 'Content-Type': 'multipart/form-data' <- REMOVED THIS
+        },
         body: formData
       });
 
@@ -81,7 +94,8 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess, requestId = null, reque
               value={category} onChange={(e) => setCategory(e.target.value)}
               className="w-full bg-white border-2 border-timber-800 p-4 rounded-2xl font-display font-black text-timber-800 outline-none"
             >
-              {['Notes', 'Past Question', 'Research', 'Textbook'].map(cat => (
+              {/* FIX: Aligned strings with Dashboard.jsx categories */}
+              {['Notes', 'Past Questions', 'Research', 'Textbooks'].map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>

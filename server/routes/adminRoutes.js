@@ -5,6 +5,7 @@ const adminController = require('../controllers/adminController');
 const { protect, isAdmin } = require('../middleware/authMiddleware');
 const pool = require('../config/db');
 
+
 /// --- GET STAFF STATS ---
 // Used to show how many files are pending at a glance
 router.get('/stats', protect, isAdmin, async (req, res) => {
@@ -27,5 +28,8 @@ router.get('/stats', protect, isAdmin, async (req, res) => {
         res.status(500).json({ message: "Failed to fetch stats" });
     }
 });
+
+// FIX: Changed 'auth' to 'protect, isAdmin' to resolve the ReferenceError
+router.delete('/permanent-delete/:id', protect, isAdmin, adminController.permanentDelete);
 
 module.exports = router;

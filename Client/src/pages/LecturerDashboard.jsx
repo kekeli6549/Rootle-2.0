@@ -12,7 +12,7 @@ const LecturerDashboard = () => {
   const [dataList, setDataList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isUploading, setIsUploading] = useState(false); // Added for UX
+  const [isUploading, setIsUploading] = useState(false);
   
   const [uploadTitle, setUploadTitle] = useState('');
   const [category, setCategory] = useState('Handout');
@@ -23,34 +23,52 @@ const LecturerDashboard = () => {
   const BACKEND_URL = "http://localhost:5000";
 
   const fetchDashboardData = async () => {
-    if (!user || !user.departmentId) return;
+    // FIX 1: Strict guard against undefined user data to prevent 500 errors
+    if (!user || !user.id) return;
+    
     setLoading(true);
     try {
       let endpoint = '';
+      // Ensure deptId is a valid number/string and not 'undefined'
+      const deptId = user?.departmentId || user?.department_id;
+
       if (activeTab === 'Review Queue') {
-        endpoint = `${BACKEND_URL}/api/resources?status=pending&departmentId=${user.departmentId}`;
+        endpoint = `${BACKEND_URL}/api/resources?status=pending${deptId ? `&departmentId=${deptId}` : ''}`;
       } else if (activeTab === 'Department Vault') {
-        endpoint = `${BACKEND_URL}/api/resources?status=approved&departmentId=${user.departmentId}`;
+        if (!deptId) {
+            setDataList([]);
+            return setLoading(false);
+        }
+        endpoint = `${BACKEND_URL}/api/resources?status=approved&departmentId=${deptId}`;
       } else if (activeTab === 'World Library') {
         endpoint = `${BACKEND_URL}/api/resources?status=approved`; 
       } else if (activeTab === 'Deletion Inbox') {
         endpoint = `${BACKEND_URL}/api/resources/admin/deletion-requests`;
       } else if (activeTab === 'Community Wishlist') {
-        endpoint = `${BACKEND_URL}/api/resources/requests?departmentId=${user.departmentId}`;
+        endpoint = `${BACKEND_URL}/api/resources/requests${deptId ? `?departmentId=${deptId}` : ''}`;
       }
 
-      const res = await fetch(endpoint, { headers: { 'x-auth-token': token } });
+      const res = await fetch(endpoint, { 
+        headers: { 
+            'x-auth-token': token,
+            'Content-Type': 'application/json' 
+        } 
+      });
+
       if (!res.ok) throw new Error("Vault synchronization failed.");
       const data = await res.json();
-      setDataList(data);
+      setDataList(Array.isArray(data) ? data : []);
     } catch (err) {
+      console.error("Fetch error:", err);
       setDataList([]);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchDashboardData(); }, [activeTab, user]);
+  useEffect(() => { 
+    if (user) fetchDashboardData(); 
+  }, [activeTab, user]);
 
   const handleAction = async (id, action) => {
     const confirmMsg = action === 'permanent' ? "PERMANENTLY PURGE from the vault?" : `Are you sure you want to ${action} this?`;
@@ -60,15 +78,16 @@ const LecturerDashboard = () => {
       let endpoint = '';
       let method = '';
 
+      // FIX 2: Correcting the endpoint paths to match Backend routes (fixing 404s)
       if (activeTab === 'Deletion Inbox') {
           endpoint = action === 'permanent' 
-            ? `${BACKEND_URL}/api/resources/admin/permanent-delete/${id}`
+            ? `${BACKEND_URL}/api/resources/admin/permanent/${id}` // Changed from permanent-delete to permanent
             : `${BACKEND_URL}/api/resources/admin/reject-deletion/${id}`;
           method = 'DELETE';
       } 
       else {
           if (action === 'permanent') {
-              endpoint = `${BACKEND_URL}/api/resources/admin/permanent-delete/${id}`;
+              endpoint = `${BACKEND_URL}/api/resources/admin/permanent/${id}`;
               method = 'DELETE';
           } else {
               endpoint = `${BACKEND_URL}/api/resources/admin/${action}/${id}`;
@@ -101,17 +120,16 @@ const LecturerDashboard = () => {
     formData.append('title', uploadTitle);
     formData.append('category', category);
     
-    // Explicitly handle requestId to ensure backend receives it correctly
     if (selectedRequestId) {
         formData.append('requestId', selectedRequestId);
     }
 
-    formData.append('file', file); // Append file last
+    formData.append('file', file);
 
     try {
       const res = await fetch(`${BACKEND_URL}/api/resources/upload`, {
         method: 'POST',
-        headers: { 'x-auth-token': token },
+        headers: { 'x-auth-token': token }, // Do NOT set Content-Type here, browser sets it for FormData
         body: formData
       });
 
@@ -123,7 +141,7 @@ const LecturerDashboard = () => {
         setFile(null);
         setSelectedRequestId(null); 
         fetchDashboardData(); 
-        alert("DEPLOY SUCCESSFUL: Resource synced and hub request fulfilled! ⚡");
+        alert("DEPLOY SUCCESSFUL: Resource synced! ⚡");
       } else {
           alert(data.message || "Upload failed.");
       }
@@ -145,6 +163,7 @@ const LecturerDashboard = () => {
   return (
     <div className="flex min-h-screen bg-[#3E2723] overflow-hidden" style={{ backgroundImage: `url(${scribbleBg})`, backgroundBlendMode: 'overlay' }}>
       
+      {/* Sidebar */}
       <aside className="w-72 bg-timber-900 text-timber-100 p-8 fixed h-full border-r-4 border-red-900/30 shadow-2xl flex flex-col z-20">
         <div className="mb-12">
             <div className="text-4xl font-display font-black text-gold-leaf tracking-tighter">Rootle.</div>
@@ -172,6 +191,7 @@ const LecturerDashboard = () => {
         </div>
       </aside>
 
+      {/* Main Content */}
       <main className="flex-1 ml-72 p-12 bg-[#F5F5DC] rounded-l-[60px] my-4 shadow-[-30px_0_60px_rgba(0,0,0,0.5)] min-h-[95vh] overflow-y-auto">
         <header className="flex justify-between items-end mb-16">
           <div>
@@ -192,7 +212,7 @@ const LecturerDashboard = () => {
           <AnimatePresence mode="wait">
             <motion.div key={activeTab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
               {dataList.length > 0 ? dataList.map((item) => {
-                const isMyDepartment = (item.department_id === user?.departmentId);
+                const isMyDepartment = (item.department_id === user?.departmentId || item.departmentId === user?.departmentId);
                 const targetId = activeTab === 'Deletion Inbox' ? item.resource_id : item.id;
 
                 if (activeTab === 'Community Wishlist') {
@@ -221,7 +241,7 @@ const LecturerDashboard = () => {
                             <div>
                                 <h3 className="font-display font-black text-2xl text-timber-800 uppercase leading-none mb-1">{item.title}</h3>
                                 <p className="text-timber-400 font-black text-[10px] uppercase tracking-widest">
-                                    {item.category} • {item.uploader_name || item.student_name}
+                                    {item.category} • {item.uploader_name || item.student_name || 'System'}
                                     {!isMyDepartment && activeTab === 'World Library' && <span className="text-red-900 ml-2 border border-red-900 px-1 rounded text-[8px]">EXTERNAL</span>}
                                 </p>
                             </div>
@@ -254,6 +274,7 @@ const LecturerDashboard = () => {
           </AnimatePresence>
         </div>
 
+        {/* Upload Modal */}
         <AnimatePresence>
           {isModalOpen && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-timber-900/80 backdrop-blur-md p-6">

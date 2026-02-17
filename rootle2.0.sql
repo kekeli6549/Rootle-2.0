@@ -109,3 +109,15 @@ CREATE TABLE IF NOT EXISTS deletion_requests (
     reason TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Create a table to track individual ratings
+CREATE TABLE IF NOT EXISTS resource_ratings (
+    id SERIAL PRIMARY KEY,
+    resource_id INTEGER REFERENCES resources(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id),
+    rating_value INTEGER CHECK (rating_value >= 1 AND rating_value <= 5),
+    UNIQUE(resource_id, user_id) -- One rating per student per file
+);
+
+-- Add a column to resources to cache the average for faster loading
+ALTER TABLE resources ADD COLUMN IF NOT EXISTS average_rating DECIMAL(3,2) DEFAULT 0.00;

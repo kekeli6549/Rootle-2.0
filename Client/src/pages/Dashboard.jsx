@@ -5,10 +5,11 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import UploadModal from '../components/UploadModal';
 import Toast from '../components/Toast';
+import DownloadAction from '../components/DownloadAction';
 
 const Dashboard = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [items, setItems] = useState([]); // Renamed from 'resources' to 'items' to handle both Files and Requests
+  const [items, setItems] = useState([]); 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [viewMode, setViewMode] = useState('My Library');
@@ -16,6 +17,9 @@ const Dashboard = () => {
   const { user, logout } = useAuth(); 
   const navigate = useNavigate();
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
+  const BACKEND_URL = "http://localhost:5000";
+  const token = localStorage.getItem('rootle_token');
 
   const showToast = (msg, type = 'success') => {
     setToast({ show: true, message: msg, type });
@@ -38,47 +42,53 @@ const Dashboard = () => {
     }
   };
 
-  const categories = ['All', 'Notes', 'Past Questions', 'Research', 'Textbooks'];
-
   useEffect(() => {
     const fetchData = async () => {
+      // FIX 1: Guard against missing user to prevent 'undefined' in URLs
+      if (!user || !user.id) return;
+
       setLoading(true);
       try {
-        const token = localStorage.getItem('rootle_token');
-        
-        // SWITCH ENDPOINT BASED ON VIEW MODE
         let url;
         if (viewMode === 'My Requests') {
-            url = new URL('http://localhost:5000/api/resources/requests');
-            // We filter requests by user ID on the frontend or backend
-            // For now, let's fetch all and filter locally for "My Requests"
+            url = new URL(`${BACKEND_URL}/api/resources/requests`);
         } else {
-            url = new URL('http://localhost:5000/api/resources');
+            url = new URL(`${BACKEND_URL}/api/resources`);
+            
+            // Standard filters
             if (searchQuery) url.searchParams.append('search', searchQuery);
             if (activeCategory !== 'All') url.searchParams.append('category', activeCategory);
             
+            // FIX 2: Refined View Mode Logic
             if (viewMode === 'My Library') {
               url.searchParams.append('mine', 'true');
+              url.searchParams.append('status', 'all'); // See pending + approved
             } 
             else if (viewMode === 'Department Feed') {
-              if (user?.departmentId || user?.department_id) {
-                url.searchParams.append('departmentId', user.departmentId || user.department_id);
+              const deptId = user?.departmentId || user?.department_id;
+              if (deptId && deptId !== 'undefined') {
+                url.searchParams.append('departmentId', deptId);
+                url.searchParams.append('status', 'approved');
               }
             } 
             else if (viewMode === 'Trending Research') {
               url.searchParams.append('trending', 'true');
+              url.searchParams.append('status', 'approved');
+            }
+            else if (viewMode === 'World View') {
+               url.searchParams.append('status', 'approved');
             }
         }
 
-        const response = await fetch(url, {
+        const response = await fetch(url.toString(), {
           headers: { 'x-auth-token': token }
         });
+        
         const data = await response.json();
         
         if (response.ok) {
             if (viewMode === 'My Requests') {
-                // Filter to only show requests made by THIS student
-                const myRequests = data.filter(req => req.requester_id === user?.id);
+                const myRequests = Array.isArray(data) ? data.filter(req => req.requester_id === user?.id) : [];
                 setItems(myRequests);
             } else {
                 setItems(Array.isArray(data) ? data : []);
@@ -86,6 +96,7 @@ const Dashboard = () => {
         }
       } catch (err) {
         console.error("Failed to fetch data:", err);
+        setItems([]);
       } finally {
         setLoading(false);
       }
@@ -96,26 +107,24 @@ const Dashboard = () => {
   }, [isModalOpen, searchQuery, activeCategory, viewMode, user]);
 
   const handleDownload = async (resId, fileUrl) => {
+    if (!fileUrl) return showToast("File path missing", "error");
     try {
-        const token = localStorage.getItem('rootle_token');
-        await fetch(`http://localhost:5000/api/resources/download/${resId}`, {
+        await fetch(`${BACKEND_URL}/api/resources/download/${resId}`, {
             method: 'POST',
             headers: { 'x-auth-token': token }
         });
     } catch (err) { console.error("Stat update failed"); }
 
-    const baseUrl = "http://localhost:5000/";
     const cleanPath = fileUrl.replace(/\\/g, '/');
-    window.open(`${baseUrl}${cleanPath}`, '_blank');
+    window.open(`${BACKEND_URL}/${cleanPath}`, '_blank');
   };
 
-  const handleDeleteRequest = async (e, resId) => {
+  const handleDeleteResource = async (e, resId) => {
     e.stopPropagation();
     if (!window.confirm("Are you sure you want to pull this from the vault?")) return;
 
     try {
-        const token = localStorage.getItem('rootle_token');
-        const response = await fetch(`http://localhost:5000/api/resources/${resId}`, {
+        const response = await fetch(`${BACKEND_URL}/api/resources/${resId}`, {
             method: 'DELETE',
             headers: { 'x-auth-token': token }
         });
@@ -133,6 +142,7 @@ const Dashboard = () => {
 
   return (
     <div className="flex min-h-screen bg-[#F5F5DC]">
+      {/* Sidebar */}
       <aside className="w-72 bg-timber-800 text-timber-100 flex flex-col p-8 fixed h-full border-r-4 border-timber-500 shadow-2xl z-20">
         <div className="text-3xl font-display font-black tracking-tighter mb-12 text-gold-leaf">Rootle.</div>
         <nav className="space-y-6 flex-1">
@@ -189,6 +199,7 @@ const Dashboard = () => {
         </div>
       </aside>
 
+      {/* Main Content */}
       <main className="flex-1 ml-72 p-12">
         <header className="flex justify-between items-end mb-8">
           <div className="flex-1 max-w-2xl">
@@ -211,6 +222,8 @@ const Dashboard = () => {
             )}
           </div>
           <motion.button 
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             onClick={() => setIsModalOpen(true)} 
             className="bg-timber-800 text-gold-leaf px-8 py-4 rounded-xl font-display font-black text-sm uppercase tracking-widest border-2 border-gold-leaf shadow-xl" 
           >
@@ -221,13 +234,12 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {items.length > 0 ? (
               items.map((item) => {
-                // RENDER REQUEST CARD
                 if (viewMode === 'My Requests') {
                     return (
                         <div key={item.id} className="bg-white border-4 border-timber-800 p-6 rounded-[30px] shadow-[10px_10px_0px_0px_rgba(191,149,63,1)]">
                             <div className="flex justify-between items-start mb-4">
                                 <span className="text-2xl">🤝</span>
-                                <span className="bg-timber-800 text-gold-leaf text-[8px] font-black px-3 py-1 rounded-full uppercase">
+                                <span className={`text-[8px] font-black px-3 py-1 rounded-full uppercase ${item.is_fulfilled ? 'bg-green-100 text-green-800' : 'bg-timber-800 text-gold-leaf'}`}>
                                     {item.is_fulfilled ? "FULFILLED" : "PENDING"}
                                 </span>
                             </div>
@@ -240,24 +252,30 @@ const Dashboard = () => {
                     );
                 }
 
-                // RENDER RESOURCE CARD
                 const fileInfo = getFileIcon(item.file_url);
                 const isOwner = item.uploader_id === user?.id;
+                const isPending = item.status === 'pending';
 
                 return (
                   <motion.div 
                     key={item.id}
                     whileHover={{ y: -10 }}
-                    onClick={() => handleDownload(item.id, item.file_url)} 
-                    className="bg-white border-4 border-timber-800 p-6 rounded-[30px] shadow-[10px_10px_0px_0px_rgba(62,39,35,1)] cursor-pointer group relative"
+                    onClick={() => !isPending && handleDownload(item.id, item.file_url)} 
+                    className={`bg-white border-4 border-timber-800 p-6 rounded-[30px] shadow-[10px_10px_0px_0px_rgba(62,39,35,1)] cursor-pointer group relative ${isPending ? 'opacity-70 grayscale' : ''}`}
                   >
                     {isOwner && (
                       <button 
-                        onClick={(e) => handleDeleteRequest(e, item.id)}
+                        onClick={(e) => handleDeleteResource(e, item.id)}
                         className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full border-2 border-timber-800 flex items-center justify-center font-black opacity-0 group-hover:opacity-100 transition-opacity z-10"
                       >
                         ×
                       </button>
+                    )}
+
+                    {isPending && (
+                        <div className="absolute top-4 left-4 z-10">
+                            <span className="bg-orange-500 text-white text-[8px] font-black px-2 py-1 rounded uppercase">Awaiting Review</span>
+                        </div>
                     )}
 
                     <div className="bg-timber-100 h-40 rounded-2xl mb-4 flex flex-col items-center justify-center border-2 border-dashed border-timber-300 group-hover:border-timber-800 transition-colors">
@@ -285,7 +303,7 @@ const Dashboard = () => {
       
       <AnimatePresence>
         {isModalOpen && (
-          <UploadModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onUploadSuccess={showToast} />
+          <UploadModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onUploadSuccess={() => showToast("UPLOAD SYNCED TO THE GATE", "success")} />
         )}
       </AnimatePresence>
     </div>
