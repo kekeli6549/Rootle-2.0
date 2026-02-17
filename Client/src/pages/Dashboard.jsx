@@ -1,4 +1,3 @@
-// src/pages/Dashboard.jsx
 import React, { useState, useEffect } from 'react'; 
 import { motion, AnimatePresence } from 'framer-motion'; 
 import { useAuth } from '../context/AuthContext'; 
@@ -44,9 +43,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      // FIX 1: Guard against missing user to prevent 'undefined' in URLs
       if (!user || !user.id) return;
-
       setLoading(true);
       try {
         let url;
@@ -54,15 +51,12 @@ const Dashboard = () => {
             url = new URL(`${BACKEND_URL}/api/resources/requests`);
         } else {
             url = new URL(`${BACKEND_URL}/api/resources`);
-            
-            // Standard filters
             if (searchQuery) url.searchParams.append('search', searchQuery);
             if (activeCategory !== 'All') url.searchParams.append('category', activeCategory);
             
-            // FIX 2: Refined View Mode Logic
             if (viewMode === 'My Library') {
               url.searchParams.append('mine', 'true');
-              url.searchParams.append('status', 'all'); // See pending + approved
+              url.searchParams.append('status', 'all');
             } 
             else if (viewMode === 'Department Feed') {
               const deptId = user?.departmentId || user?.department_id;
@@ -108,27 +102,51 @@ const Dashboard = () => {
 
   const handleDownload = async (resId, fileUrl) => {
     if (!fileUrl) return showToast("File path missing", "error");
+    
+    // 1. Update Download Stat
     try {
         await fetch(`${BACKEND_URL}/api/resources/download/${resId}`, {
             method: 'POST',
             headers: { 'x-auth-token': token }
         });
-    } catch (err) { console.error("Stat update failed"); }
+    } catch (err) { 
+        console.error("Stat update failed"); 
+    }
 
-    const cleanPath = fileUrl.replace(/\\/g, '/');
-    window.open(`${BACKEND_URL}/${cleanPath}`, '_blank');
+    // 2. Force File Download via Blob
+    try {
+      const cleanPath = fileUrl.replace(/\\/g, '/');
+      const response = await fetch(`${BACKEND_URL}/${cleanPath}`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Extract filename from path
+      const filename = cleanPath.split('/').pop();
+      link.setAttribute('download', filename); 
+      
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      showToast("ROOTLE SECURED", "success");
+    } catch (error) {
+      console.error("Download execution failed:", error);
+      showToast("DOWNLOAD FAILED", "error");
+    }
   };
 
   const handleDeleteResource = async (e, resId) => {
     e.stopPropagation();
     if (!window.confirm("Are you sure you want to pull this from the vault?")) return;
-
     try {
         const response = await fetch(`${BACKEND_URL}/api/resources/${resId}`, {
             method: 'DELETE',
             headers: { 'x-auth-token': token }
         });
-
         if (response.ok) {
             setItems(prev => prev.filter(item => item.id !== resId));
             showToast("REMOVAL REQUEST SENT", "success"); 
@@ -142,7 +160,6 @@ const Dashboard = () => {
 
   return (
     <div className="flex min-h-screen bg-[#F5F5DC]">
-      {/* Sidebar */}
       <aside className="w-72 bg-timber-800 text-timber-100 flex flex-col p-8 fixed h-full border-r-4 border-timber-500 shadow-2xl z-20">
         <div className="text-3xl font-display font-black tracking-tighter mb-12 text-gold-leaf">Rootle.</div>
         <nav className="space-y-6 flex-1">
@@ -159,16 +176,13 @@ const Dashboard = () => {
               {item}
             </motion.div>
           ))}
-
           <motion.div 
             whileHover={{ x: 10, color: "#bf953f" }}
             onClick={() => navigate('/requests')}
             className="cursor-pointer font-display uppercase text-[11px] font-black tracking-[0.15em] flex items-center gap-4 transition-colors text-gold-leaf mt-8 pt-4 border-t border-timber-600/30"
           >
-            <span className="text-lg">🤝</span>
-            Request Hub
+            <span className="text-lg">🤝</span> Request Hub
           </motion.div>
-
           <button onClick={() => { logout(); navigate('/login'); }} className="mt-4 text-[10px] font-black uppercase text-red-400 hover:text-red-200 transition-colors text-left">
             Exit System
           </button>
@@ -181,25 +195,18 @@ const Dashboard = () => {
                   {user?.fullName?.charAt(0) || 'S'}
                 </div>
                 <div>
-                  <p className="text-[11px] font-black uppercase text-timber-100 leading-none">
-                    {user?.fullName || "Scholar"}
-                  </p>
-                  <p className="text-[9px] text-timber-400 uppercase mt-1 tracking-widest font-bold">
-                    ID: {displayID}
-                  </p>
+                  <p className="text-[11px] font-black uppercase text-timber-100 leading-none">{user?.fullName || "Scholar"}</p>
+                  <p className="text-[9px] text-timber-400 uppercase mt-1 tracking-widest font-bold">ID: {displayID}</p>
                 </div>
              </div>
              <div className="bg-[#bf953f] border-2 border-gold-leaf p-3 rounded-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,0.3)]">
                <p className="text-[8px] font-black uppercase tracking-[0.2em] text-timber-900/70 mb-1">Active Faculty</p>
-               <p className="text-[12px] font-display font-black uppercase text-timber-900 leading-tight">
-                 {displayDept}
-               </p>
+               <p className="text-[12px] font-display font-black uppercase text-timber-900 leading-tight">{displayDept}</p>
              </div>
           </div>
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 ml-72 p-12">
         <header className="flex justify-between items-end mb-8">
           <div className="flex-1 max-w-2xl">
@@ -245,9 +252,7 @@ const Dashboard = () => {
                             </div>
                             <h3 className="font-display font-black text-timber-800 text-xl tracking-tight leading-tight">{item.title}</h3>
                             <p className="text-timber-500 text-[11px] mt-2 italic">"{item.description}"</p>
-                            <p className="text-timber-400 text-[9px] font-bold uppercase mt-4">
-                                Posted: {new Date(item.created_at).toLocaleDateString()}
-                            </p>
+                            <p className="text-timber-400 text-[9px] font-bold uppercase mt-4">Posted: {new Date(item.created_at).toLocaleDateString()}</p>
                         </div>
                     );
                 }
@@ -260,13 +265,22 @@ const Dashboard = () => {
                   <motion.div 
                     key={item.id}
                     whileHover={{ y: -10 }}
-                    onClick={() => !isPending && handleDownload(item.id, item.file_url)} 
-                    className={`bg-white border-4 border-timber-800 p-6 rounded-[30px] shadow-[10px_10px_0px_0px_rgba(62,39,35,1)] cursor-pointer group relative ${isPending ? 'opacity-70 grayscale' : ''}`}
+                    className={`bg-white border-4 border-timber-800 p-6 rounded-[30px] shadow-[10px_10px_0px_0px_rgba(62,39,35,1)] group relative ${isPending ? 'opacity-70 grayscale' : 'cursor-pointer'}`}
                   >
+                    {!isPending && (
+                      <DownloadAction 
+                        count={item.download_count || 0}
+                        onClick={(e) => {
+                          e.stopPropagation(); 
+                          handleDownload(item.id, item.file_url);
+                        }} 
+                      />
+                    )}
+
                     {isOwner && (
                       <button 
                         onClick={(e) => handleDeleteResource(e, item.id)}
-                        className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full border-2 border-timber-800 flex items-center justify-center font-black opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                        className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full border-2 border-timber-800 flex items-center justify-center font-black opacity-0 group-hover:opacity-100 transition-opacity z-30"
                       >
                         ×
                       </button>
@@ -278,14 +292,16 @@ const Dashboard = () => {
                         </div>
                     )}
 
-                    <div className="bg-timber-100 h-40 rounded-2xl mb-4 flex flex-col items-center justify-center border-2 border-dashed border-timber-300 group-hover:border-timber-800 transition-colors">
-                        <span className="text-4xl mb-2">{fileInfo.icon}</span>
-                        <span className={`text-[9px] font-black uppercase tracking-widest ${fileInfo.color}`}>{fileInfo.label}</span>
+                    <div onClick={() => !isPending && handleDownload(item.id, item.file_url)}>
+                        <div className="bg-timber-100 h-40 rounded-2xl mb-4 flex flex-col items-center justify-center border-2 border-dashed border-timber-300 group-hover:border-timber-800 transition-colors">
+                            <span className="text-4xl mb-2">{fileInfo.icon}</span>
+                            <span className={`text-[9px] font-black uppercase tracking-widest ${fileInfo.color}`}>{fileInfo.label}</span>
+                        </div>
+                        <h3 className="font-display font-black text-timber-800 text-xl tracking-tight leading-tight pr-12">{item.title}</h3>
+                        <p className="text-timber-500 text-[10px] font-bold uppercase mt-2">
+                          {new Date(item.created_at).toLocaleDateString()} • {item.uploader_name || 'Scholar'}
+                        </p>
                     </div>
-                    <h3 className="font-display font-black text-timber-800 text-xl tracking-tight leading-tight">{item.title}</h3>
-                    <p className="text-timber-500 text-[10px] font-bold uppercase mt-2">
-                      {new Date(item.created_at).toLocaleDateString()} • {item.uploader_name || 'Scholar'}
-                    </p>
                   </motion.div>
                 );
               })
@@ -300,7 +316,6 @@ const Dashboard = () => {
       </main>
 
       <Toast isVisible={toast.show} message={toast.message} type={toast.type} onClose={() => setToast(prev => ({ ...prev, show: false }))} />
-      
       <AnimatePresence>
         {isModalOpen && (
           <UploadModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onUploadSuccess={() => showToast("UPLOAD SYNCED TO THE GATE", "success")} />
