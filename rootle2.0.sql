@@ -91,8 +91,21 @@ INSERT INTO departments (name) VALUES
 ('General Studies'),
 ('Engineering');
 
--- Add hash column to prevent duplicate files
+-- Ensure fulfillment tracking is active
+ALTER TABLE resource_requests ADD COLUMN IF NOT EXISTS is_fulfilled BOOLEAN DEFAULT false;
+ALTER TABLE resource_requests ADD COLUMN IF NOT EXISTS fulfilled_by INTEGER REFERENCES users(id);
+
+-- Ensure file hash is active to prevent 500 errors on duplicates
 ALTER TABLE resources ADD COLUMN IF NOT EXISTS file_hash TEXT;
 
--- Track who fulfilled a request in the Hub
-ALTER TABLE resource_requests ADD COLUMN IF NOT EXISTS fulfilled_by INTEGER REFERENCES users(id);
+ALTER TABLE resource_requests 
+ADD COLUMN IF NOT EXISTS fulfilled_at TIMESTAMP,
+ADD COLUMN IF NOT EXISTS fulfilled_by INTEGER REFERENCES users(id);
+
+CREATE TABLE IF NOT EXISTS deletion_requests (
+    id SERIAL PRIMARY KEY,
+    resource_id INTEGER REFERENCES resources(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id),
+    reason TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

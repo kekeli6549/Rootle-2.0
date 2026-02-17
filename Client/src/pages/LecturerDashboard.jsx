@@ -11,9 +11,9 @@ const LecturerDashboard = () => {
   const [activeTab, setActiveTab] = useState('Review Queue');
   const [dataList, setDataList] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false); // Added for UX
+  
   const [uploadTitle, setUploadTitle] = useState('');
   const [category, setCategory] = useState('Handout');
   const [file, setFile] = useState(null);
@@ -52,7 +52,7 @@ const LecturerDashboard = () => {
 
   useEffect(() => { fetchDashboardData(); }, [activeTab, user]);
 
-  const handleAction = async (id, action, type = 'approval') => {
+  const handleAction = async (id, action) => {
     const confirmMsg = action === 'permanent' ? "PERMANENTLY PURGE from the vault?" : `Are you sure you want to ${action} this?`;
     if(!window.confirm(confirmMsg)) return;
 
@@ -60,19 +60,20 @@ const LecturerDashboard = () => {
       let endpoint = '';
       let method = '';
 
-      // LOGIC FOR DELETION REQUESTS (The Inbox)
       if (activeTab === 'Deletion Inbox') {
-          // If action is permanent, we delete the resource. 
-          // If action is reject, we just remove the request entry.
           endpoint = action === 'permanent' 
             ? `${BACKEND_URL}/api/resources/admin/permanent-delete/${id}`
             : `${BACKEND_URL}/api/resources/admin/reject-deletion/${id}`;
           method = 'DELETE';
       } 
-      // LOGIC FOR NEW UPLOADS (The Gate)
       else {
-          endpoint = `${BACKEND_URL}/api/resources/admin/${action}/${id}`;
-          method = action === 'approve' ? 'PUT' : 'DELETE';
+          if (action === 'permanent') {
+              endpoint = `${BACKEND_URL}/api/resources/admin/permanent-delete/${id}`;
+              method = 'DELETE';
+          } else {
+              endpoint = `${BACKEND_URL}/api/resources/admin/${action}/${id}`;
+              method = action === 'approve' ? 'PUT' : 'DELETE';
+          }
       }
       
       const response = await fetch(endpoint, {
@@ -80,19 +81,32 @@ const LecturerDashboard = () => {
         headers: { 'x-auth-token': token }
       });
 
-      if (response.ok) fetchDashboardData(); 
-    } catch (err) { alert("Server communication failure."); }
+      if (response.ok) {
+          fetchDashboardData();
+      } else {
+          const errorData = await response.json();
+          alert(errorData.message || "Operation failed.");
+      }
+    } catch (err) { 
+      alert("Server communication failure."); 
+    }
   };
 
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!file) return alert("Select a file first!");
 
+    setIsUploading(true);
     const formData = new FormData();
     formData.append('title', uploadTitle);
     formData.append('category', category);
-    formData.append('file', file);
-    if (selectedRequestId) formData.append('requestId', selectedRequestId);
+    
+    // Explicitly handle requestId to ensure backend receives it correctly
+    if (selectedRequestId) {
+        formData.append('requestId', selectedRequestId);
+    }
+
+    formData.append('file', file); // Append file last
 
     try {
       const res = await fetch(`${BACKEND_URL}/api/resources/upload`, {
@@ -101,18 +115,27 @@ const LecturerDashboard = () => {
         body: formData
       });
 
+      const data = await res.json();
+
       if (res.ok) {
         setIsModalOpen(false);
         setUploadTitle('');
         setFile(null);
-        setSelectedRequestId(null);
-        fetchDashboardData();
-        alert("Deploy Successful: Resource synced to vault.");
+        setSelectedRequestId(null); 
+        fetchDashboardData(); 
+        alert("DEPLOY SUCCESSFUL: Resource synced and hub request fulfilled! ⚡");
+      } else {
+          alert(data.message || "Upload failed.");
       }
-    } catch (err) { console.error(err); }
+    } catch (err) { 
+        alert("Critical failure during sync.");
+    } finally {
+        setIsUploading(false);
+    }
   };
 
   const handleViewFile = (url) => {
+    if (!url) return alert("File path missing");
     const fullUrl = `${BACKEND_URL}/${url.replace(/\\/g, '/')}`;
     window.open(fullUrl, '_blank');
   };
@@ -160,7 +183,7 @@ const LecturerDashboard = () => {
             </h1>
           </div>
           
-          <button onClick={() => { setSelectedRequestId(null); setIsModalOpen(true); }} className="bg-timber-800 text-gold-leaf px-6 py-3 rounded-full font-black uppercase text-[10px] tracking-widest shadow-xl">
+          <button onClick={() => { setSelectedRequestId(null); setUploadTitle(''); setIsModalOpen(true); }} className="bg-timber-800 text-gold-leaf px-6 py-3 rounded-full font-black uppercase text-[10px] tracking-widest shadow-xl">
             + New Upload
           </button>
         </header>
@@ -171,8 +194,6 @@ const LecturerDashboard = () => {
               {dataList.length > 0 ? dataList.map((item) => {
                 const isMyDepartment = (item.department_id === user?.departmentId);
                 const targetId = activeTab === 'Deletion Inbox' ? item.resource_id : item.id;
-                // For Deletion Inbox, the ID in the mapping table is item.id, but the target file is item.resource_id
-                const deletionRequestId = item.id; 
 
                 if (activeTab === 'Community Wishlist') {
                   return (
@@ -182,7 +203,11 @@ const LecturerDashboard = () => {
                         <h3 className="font-display font-black text-2xl text-timber-800 uppercase mb-1">{item.title}</h3>
                         <p className="text-timber-400 font-bold text-xs">Req by: {item.student_name} • {item.description}</p>
                       </div>
-                      <button onClick={() => { setUploadTitle(`RE: ${item.title}`); setSelectedRequestId(item.id); setIsModalOpen(true); }} className="px-6 py-3 bg-timber-800 text-gold-leaf font-black text-[10px] uppercase rounded-xl hover:scale-105 transition-all">Fulfill Request</button>
+                      <button onClick={() => { 
+                          setUploadTitle(`RE: ${item.title}`); 
+                          setSelectedRequestId(item.id); 
+                          setIsModalOpen(true); 
+                      }} className="px-6 py-3 bg-timber-800 text-gold-leaf font-black text-[10px] uppercase rounded-xl hover:scale-105 transition-all">Fulfill Request</button>
                     </div>
                   )
                 }
@@ -204,26 +229,20 @@ const LecturerDashboard = () => {
                         
                         <div className="flex gap-3">
                             <button onClick={() => handleViewFile(item.file_url)} className="px-6 py-2 bg-timber-100 text-timber-800 border-2 border-timber-800 font-black text-[9px] uppercase rounded-lg">Preview</button>
-                            
-                            {/* REVIEW ACTIONS */}
                             {activeTab === 'Review Queue' && (
                                 <>
                                     <button onClick={() => handleAction(targetId, 'reject')} className="px-6 py-2 bg-red-100 text-red-900 border-2 border-red-900 font-black text-[9px] uppercase rounded-lg">Reject</button>
                                     <button onClick={() => handleAction(targetId, 'approve')} className="px-6 py-2 bg-timber-800 text-gold-leaf font-black text-[9px] uppercase rounded-lg">Approve</button>
                                 </>
                             )}
-
-                            {/* DELETION INBOX ACTIONS */}
                             {activeTab === 'Deletion Inbox' && (
                                 <>
-                                    <button onClick={() => handleAction(deletionRequestId, 'reject')} className="px-6 py-2 bg-timber-100 text-timber-800 border-2 border-timber-800 font-black text-[9px] uppercase rounded-lg">Keep File</button>
-                                    <button onClick={() => handleAction(targetId, 'permanent', 'delete')} className="px-6 py-2 bg-red-900 text-white font-black text-[9px] uppercase rounded-lg hover:bg-black">Confirm Purge</button>
+                                    <button onClick={() => handleAction(item.id, 'reject')} className="px-6 py-2 bg-timber-100 text-timber-800 border-2 border-timber-800 font-black text-[9px] uppercase rounded-lg">Keep File</button>
+                                    <button onClick={() => handleAction(targetId, 'permanent')} className="px-6 py-2 bg-red-900 text-white font-black text-[9px] uppercase rounded-lg hover:bg-black">Confirm Purge</button>
                                 </>
                             )}
-
-                            {/* STANDARD VAULT ACTIONS */}
                             {(activeTab === 'Department Vault' || (activeTab === 'World Library' && isMyDepartment)) && (
-                                <button onClick={() => handleAction(targetId, 'permanent', 'delete')} className="px-6 py-2 bg-red-900 text-white font-black text-[9px] uppercase rounded-lg hover:bg-black transition-all">
+                                <button onClick={() => handleAction(targetId, 'permanent')} className="px-6 py-2 bg-red-900 text-white font-black text-[9px] uppercase rounded-lg hover:bg-black transition-all">
                                     Delete
                                 </button>
                             )}
@@ -239,7 +258,10 @@ const LecturerDashboard = () => {
           {isModalOpen && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-timber-900/80 backdrop-blur-md p-6">
               <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-[#F5F5DC] p-10 rounded-[50px] border-8 border-timber-800 w-full max-w-lg shadow-[30px_30px_0px_0px_#1a0f0d]">
-                <h2 className="text-4xl font-display font-black text-timber-800 mb-8 uppercase tracking-tighter">Vault Entry.</h2>
+                <h2 className="text-4xl font-display font-black text-timber-800 mb-2 uppercase tracking-tighter">Vault Entry.</h2>
+                {selectedRequestId && (
+                    <p className="mb-6 text-[10px] font-black text-red-900 uppercase bg-red-100 p-2 rounded-lg border border-red-900/20">Fulfilling Hub Request #{selectedRequestId}</p>
+                )}
                 <form onSubmit={handleUpload} className="space-y-6">
                   <div>
                     <label className="text-[10px] font-black text-timber-400 uppercase mb-2 block">Resource Title</label>
@@ -247,7 +269,7 @@ const LecturerDashboard = () => {
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-timber-400 uppercase mb-2 block">Category</label>
-                    <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full bg-white border-4 border-timber-800 p-4 rounded-2xl font-black text-timber-800 text-sm appearance-none">
+                    <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full bg-white border-4 border-timber-800 p-4 rounded-2xl font-black text-timber-800 text-sm appearance-none focus:outline-none">
                       <option>Handout</option>
                       <option>Past Question</option>
                       <option>Syllabus</option>
@@ -263,7 +285,9 @@ const LecturerDashboard = () => {
                   </div>
                   <div className="flex gap-4 pt-4">
                     <button type="button" onClick={() => { setIsModalOpen(false); setSelectedRequestId(null); }} className="flex-1 py-4 font-black text-timber-400 text-[10px] uppercase">Cancel</button>
-                    <button type="submit" className="flex-1 py-4 bg-timber-800 text-gold-leaf rounded-2xl font-black text-[10px] uppercase">Verify & Deploy</button>
+                    <button type="submit" disabled={isUploading} className="flex-1 py-4 bg-timber-800 text-gold-leaf rounded-2xl font-black text-[10px] uppercase disabled:opacity-50">
+                        {isUploading ? "Uploading..." : "Verify & Deploy"}
+                    </button>
                   </div>
                 </form>
               </motion.div>

@@ -3,13 +3,12 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion'; 
 import { useAuth } from '../context/AuthContext'; 
 import { useNavigate } from 'react-router-dom';
-import scribbleBg from '../assets/scribble-bg.png';
 import UploadModal from '../components/UploadModal';
-import Toast from '../components/Toast'
+import Toast from '../components/Toast';
 
 const Dashboard = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [resources, setResources] = useState([]); 
+  const [items, setItems] = useState([]); // Renamed from 'resources' to 'items' to handle both Files and Requests
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [viewMode, setViewMode] = useState('My Library');
@@ -42,40 +41,57 @@ const Dashboard = () => {
   const categories = ['All', 'Notes', 'Past Questions', 'Research', 'Textbooks'];
 
   useEffect(() => {
-    const fetchResources = async () => {
+    const fetchData = async () => {
       setLoading(true);
       try {
         const token = localStorage.getItem('rootle_token');
-        const url = new URL('http://localhost:5000/api/resources');
         
-        if (searchQuery) url.searchParams.append('search', searchQuery);
-        if (activeCategory !== 'All') url.searchParams.append('category', activeCategory);
-        
-        if (viewMode === 'My Library') {
-          url.searchParams.append('mine', 'true');
-        } 
-        else if (viewMode === 'Department Feed') {
-          if (user?.departmentId || user?.department_id) {
-            url.searchParams.append('departmentId', user.departmentId || user.department_id);
-          }
-        } 
-        else if (viewMode === 'Trending Research') {
-          url.searchParams.append('trending', 'true');
-        } 
+        // SWITCH ENDPOINT BASED ON VIEW MODE
+        let url;
+        if (viewMode === 'My Requests') {
+            url = new URL('http://localhost:5000/api/resources/requests');
+            // We filter requests by user ID on the frontend or backend
+            // For now, let's fetch all and filter locally for "My Requests"
+        } else {
+            url = new URL('http://localhost:5000/api/resources');
+            if (searchQuery) url.searchParams.append('search', searchQuery);
+            if (activeCategory !== 'All') url.searchParams.append('category', activeCategory);
+            
+            if (viewMode === 'My Library') {
+              url.searchParams.append('mine', 'true');
+            } 
+            else if (viewMode === 'Department Feed') {
+              if (user?.departmentId || user?.department_id) {
+                url.searchParams.append('departmentId', user.departmentId || user.department_id);
+              }
+            } 
+            else if (viewMode === 'Trending Research') {
+              url.searchParams.append('trending', 'true');
+            }
+        }
 
         const response = await fetch(url, {
           headers: { 'x-auth-token': token }
         });
         const data = await response.json();
-        if (response.ok) setResources(Array.isArray(data) ? data : []);
+        
+        if (response.ok) {
+            if (viewMode === 'My Requests') {
+                // Filter to only show requests made by THIS student
+                const myRequests = data.filter(req => req.requester_id === user?.id);
+                setItems(myRequests);
+            } else {
+                setItems(Array.isArray(data) ? data : []);
+            }
+        }
       } catch (err) {
-        console.error("Failed to fetch library feed:", err);
+        console.error("Failed to fetch data:", err);
       } finally {
         setLoading(false);
       }
     };
 
-    const debounceTimer = setTimeout(fetchResources, 300);
+    const debounceTimer = setTimeout(fetchData, 300);
     return () => clearTimeout(debounceTimer);
   }, [isModalOpen, searchQuery, activeCategory, viewMode, user]);
 
@@ -93,11 +109,9 @@ const Dashboard = () => {
     window.open(`${baseUrl}${cleanPath}`, '_blank');
   };
 
-  // REPLACE your existing handleDeleteRequest function with this one:
-const handleDeleteRequest = async (e, resId) => {
+  const handleDeleteRequest = async (e, resId) => {
     e.stopPropagation();
-    
-    if (!window.confirm("Are you sure you want to pull this contribution from the vault?")) return;
+    if (!window.confirm("Are you sure you want to pull this from the vault?")) return;
 
     try {
         const token = localStorage.getItem('rootle_token');
@@ -107,25 +121,22 @@ const handleDeleteRequest = async (e, resId) => {
         });
 
         if (response.ok) {
-            // Remove from local state immediately
-            setResources(prev => prev.filter(res => res.id !== resId));
+            setItems(prev => prev.filter(item => item.id !== resId));
             showToast("REMOVAL REQUEST SENT", "success"); 
-        } else if (response.status === 403) {
-            showToast("UNAUTHORIZED: NOT YOUR FILE", "error"); 
         } else {
             showToast("ERROR SENDING REQUEST", "error"); 
         }
     } catch (err) {
         showToast("NETWORK ERROR", "error");
     }
-};
+  };
 
   return (
     <div className="flex min-h-screen bg-[#F5F5DC]">
       <aside className="w-72 bg-timber-800 text-timber-100 flex flex-col p-8 fixed h-full border-r-4 border-timber-500 shadow-2xl z-20">
         <div className="text-3xl font-display font-black tracking-tighter mb-12 text-gold-leaf">Rootle.</div>
         <nav className="space-y-6 flex-1">
-          {['My Library', 'Department Feed', 'Trending Research', 'World View'].map((item) => (
+          {['My Library', 'Department Feed', 'Trending Research', 'World View', 'My Requests'].map((item) => (
             <motion.div 
               key={item}
               whileHover={{ x: 10, color: "#bf953f" }}
@@ -157,11 +168,11 @@ const handleDeleteRequest = async (e, resId) => {
           <div className="flex flex-col gap-4">
              <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-timber-100 border-2 border-gold-leaf overflow-hidden flex items-center justify-center text-timber-800 font-black text-xl shadow-inner">
-                  {user?.fullName?.charAt(0) || user?.username?.charAt(0) || 'S'}
+                  {user?.fullName?.charAt(0) || 'S'}
                 </div>
                 <div>
                   <p className="text-[11px] font-black uppercase text-timber-100 leading-none">
-                    {user?.fullName || user?.username || "Scholar"}
+                    {user?.fullName || "Scholar"}
                   </p>
                   <p className="text-[9px] text-timber-400 uppercase mt-1 tracking-widest font-bold">
                     ID: {displayID}
@@ -182,81 +193,80 @@ const handleDeleteRequest = async (e, resId) => {
         <header className="flex justify-between items-end mb-8">
           <div className="flex-1 max-w-2xl">
             <p className="text-timber-500 font-display font-black uppercase text-[10px] tracking-[0.3em]">
-              {viewMode} • {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+              {viewMode} • {new Date().toLocaleDateString()}
             </p>
             <h1 className="text-6xl font-display font-black text-timber-800 tracking-tighter mb-4">
-               {viewMode === 'Trending Research' ? 'The Heat.' : 
-                viewMode === 'Department Feed' ? 'Dept. Vault.' : 
-                viewMode === 'World View' ? 'Global.' : 'Your Library.'}
+               {viewMode === 'My Requests' ? 'Your Wishes.' : 'Library.'}
             </h1>
-            <div className="relative max-w-md">
-              <input 
-                type="text"
-                placeholder="SEARCH FOR RESOURCES..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white border-2 border-timber-800 px-4 py-2 rounded-lg font-display text-[10px] font-black tracking-widest placeholder:text-timber-300 focus:outline-none focus:ring-2 focus:ring-gold-leaf"
-              />
-            </div>
+            {viewMode !== 'My Requests' && (
+                <div className="relative max-w-md">
+                <input 
+                    type="text"
+                    placeholder="SEARCH FOR RESOURCES..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-white border-2 border-timber-800 px-4 py-2 rounded-lg font-display text-[10px] font-black tracking-widest focus:outline-none focus:ring-2 focus:ring-gold-leaf"
+                />
+                </div>
+            )}
           </div>
           <motion.button 
             onClick={() => setIsModalOpen(true)} 
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="bg-timber-800 text-gold-leaf px-8 py-4 rounded-xl font-display font-black text-sm uppercase tracking-widest shadow-xl border-2 border-gold-leaf transition-all" 
+            className="bg-timber-800 text-gold-leaf px-8 py-4 rounded-xl font-display font-black text-sm uppercase tracking-widest border-2 border-gold-leaf shadow-xl" 
           >
             + Rootle New File
           </motion.button>
         </header>
 
-        <div className="flex gap-4 mb-12 overflow-x-auto pb-2 scrollbar-hide">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`px-4 py-2 rounded-full font-display text-[10px] font-black uppercase tracking-widest border-2 transition-all whitespace-nowrap ${
-                activeCategory === cat ? 'bg-timber-800 text-gold-leaf border-timber-800' : 'bg-transparent text-timber-400 border-timber-200 hover:border-timber-800'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {resources.length > 0 ? (
-              resources.map((res) => {
-                const fileInfo = getFileIcon(res.file_url);
-                const isOwner = res.uploader_id === user?.id; // Check ownership
+            {items.length > 0 ? (
+              items.map((item) => {
+                // RENDER REQUEST CARD
+                if (viewMode === 'My Requests') {
+                    return (
+                        <div key={item.id} className="bg-white border-4 border-timber-800 p-6 rounded-[30px] shadow-[10px_10px_0px_0px_rgba(191,149,63,1)]">
+                            <div className="flex justify-between items-start mb-4">
+                                <span className="text-2xl">🤝</span>
+                                <span className="bg-timber-800 text-gold-leaf text-[8px] font-black px-3 py-1 rounded-full uppercase">
+                                    {item.is_fulfilled ? "FULFILLED" : "PENDING"}
+                                </span>
+                            </div>
+                            <h3 className="font-display font-black text-timber-800 text-xl tracking-tight leading-tight">{item.title}</h3>
+                            <p className="text-timber-500 text-[11px] mt-2 italic">"{item.description}"</p>
+                            <p className="text-timber-400 text-[9px] font-bold uppercase mt-4">
+                                Posted: {new Date(item.created_at).toLocaleDateString()}
+                            </p>
+                        </div>
+                    );
+                }
+
+                // RENDER RESOURCE CARD
+                const fileInfo = getFileIcon(item.file_url);
+                const isOwner = item.uploader_id === user?.id;
 
                 return (
                   <motion.div 
-                    key={res.id}
+                    key={item.id}
                     whileHover={{ y: -10 }}
-                    onClick={() => handleDownload(res.id, res.file_url)} 
+                    onClick={() => handleDownload(item.id, item.file_url)} 
                     className="bg-white border-4 border-timber-800 p-6 rounded-[30px] shadow-[10px_10px_0px_0px_rgba(62,39,35,1)] cursor-pointer group relative"
                   >
                     {isOwner && (
                       <button 
-                        onClick={(e) => handleDeleteRequest(e, res.id)}
-                        className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full border-2 border-timber-800 flex items-center justify-center font-black opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-red-700"
+                        onClick={(e) => handleDeleteRequest(e, item.id)}
+                        className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full border-2 border-timber-800 flex items-center justify-center font-black opacity-0 group-hover:opacity-100 transition-opacity z-10"
                       >
                         ×
                       </button>
                     )}
 
-                    <div className="bg-timber-100 h-40 rounded-2xl mb-4 flex flex-col items-center justify-center border-2 border-dashed border-timber-300 group-hover:border-timber-800 transition-colors relative">
-                        {(viewMode === 'World View' || viewMode === 'Trending Research') && (
-                          <div className="absolute bottom-2 right-2 bg-timber-800 text-gold-leaf text-[7px] font-black px-2 py-1 rounded-md uppercase tracking-tighter">
-                            {res.department_name}
-                          </div>
-                        )}
+                    <div className="bg-timber-100 h-40 rounded-2xl mb-4 flex flex-col items-center justify-center border-2 border-dashed border-timber-300 group-hover:border-timber-800 transition-colors">
                         <span className="text-4xl mb-2">{fileInfo.icon}</span>
                         <span className={`text-[9px] font-black uppercase tracking-widest ${fileInfo.color}`}>{fileInfo.label}</span>
                     </div>
-                    <h3 className="font-display font-black text-timber-800 text-xl tracking-tight leading-tight">{res.title}</h3>
+                    <h3 className="font-display font-black text-timber-800 text-xl tracking-tight leading-tight">{item.title}</h3>
                     <p className="text-timber-500 text-[10px] font-bold uppercase mt-2">
-                      {new Date(res.created_at).toLocaleDateString()} • {res.uploader_name}
+                      {new Date(item.created_at).toLocaleDateString()} • {item.uploader_name || 'Scholar'}
                     </p>
                   </motion.div>
                 );
@@ -264,27 +274,18 @@ const handleDeleteRequest = async (e, resId) => {
             ) : (
               <div className="col-span-full py-20 text-center border-4 border-dashed border-timber-300 rounded-[40px]">
                 <p className="font-display font-black text-timber-400 uppercase tracking-widest">
-                  {loading ? "SEARCHING THE VAULT..." : "No matching resources found."}
+                  {loading ? "FETCHING..." : "Nothing to show here yet."}
                 </p>
               </div>
             )}
         </div>
       </main>
 
-      <Toast 
-        isVisible={toast.show} 
-        message={toast.message} 
-        type={toast.type} 
-        onClose={() => setToast(prev => ({ ...prev, show: false }))} 
-      />
+      <Toast isVisible={toast.show} message={toast.message} type={toast.type} onClose={() => setToast(prev => ({ ...prev, show: false }))} />
       
       <AnimatePresence>
         {isModalOpen && (
-          <UploadModal 
-            isOpen={isModalOpen} 
-            onClose={() => setIsModalOpen(false)}
-            onUploadSuccess={showToast} // Fixed: Passing the function correctly
-          />
+          <UploadModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onUploadSuccess={showToast} />
         )}
       </AnimatePresence>
     </div>
