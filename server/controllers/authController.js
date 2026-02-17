@@ -102,8 +102,11 @@ exports.login = async (req, res) => {
 exports.getDepartments = async (req, res) => {
     try {
         const result = await pool.query('SELECT id, name FROM departments ORDER BY name ASC');
-        res.status(200).json(result.rows);
+        // Always return an array, even if empty, to prevent frontend .map() crashes
+        res.status(200).json(result.rows || []); 
     } catch (err) {
-        res.status(500).json({ message: "Database Error" });
+        console.error("Database Error in getDepartments:", err.message);
+        // Fallback to empty array so the frontend doesn't break
+        res.status(500).json([]); 
     }
 };

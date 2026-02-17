@@ -8,12 +8,15 @@ const { protect, isAdmin } = require('../middleware/authMiddleware');
 router.post('/upload', protect, upload.single('file'), resourceController.uploadResource);
 router.get('/', protect, resourceController.getAllResources);
 router.delete('/:id', protect, resourceController.requestDeletion);
+router.delete('/admin/reject-deletion/:id', protect, isAdmin, resourceController.rejectDeletion);
 router.post('/download/:id', protect, resourceController.incrementDownload);
 
 // REQUEST HUB
 router.post('/requests', protect, resourceController.createRequest);
 router.get('/requests', protect, resourceController.getRequests);
+// This line below was the one causing the crash because the function was missing in the controller
 router.put('/requests/:id/fulfill', protect, resourceController.fulfillRequest);
+
 
 // STAFF / ADMIN
 router.put('/admin/approve/:id', protect, isAdmin, resourceController.approveResource);

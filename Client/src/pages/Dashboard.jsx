@@ -18,12 +18,11 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-const showToast = (msg, type = 'success') => {
-  setToast({ show: true, message: msg, type });
-  setTimeout(() => setToast({ ...toast, show: false }), 4000);
-};
+  const showToast = (msg, type = 'success') => {
+    setToast({ show: true, message: msg, type });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), 4000);
+  };
 
-  // --- DATA SYNC LAYER ---
   const displayDept = user?.departmentName || user?.department || "Awaiting Sync...";
   const displayID = user?.studentId || user?.staffId || user?.idNumber || "ROOT-2026";
 
@@ -54,9 +53,13 @@ const showToast = (msg, type = 'success') => {
         
         if (viewMode === 'My Library') {
           url.searchParams.append('mine', 'true');
-        } else if (viewMode === 'Department Feed' && user?.department_id) {
-          url.searchParams.append('departmentId', user.department_id);
-        } else if (viewMode === 'Trending Research') {
+        } 
+        else if (viewMode === 'Department Feed') {
+          if (user?.departmentId || user?.department_id) {
+            url.searchParams.append('departmentId', user.departmentId || user.department_id);
+          }
+        } 
+        else if (viewMode === 'Trending Research') {
           url.searchParams.append('trending', 'true');
         } 
 
@@ -64,7 +67,7 @@ const showToast = (msg, type = 'success') => {
           headers: { 'x-auth-token': token }
         });
         const data = await response.json();
-        if (response.ok) setResources(data);
+        if (response.ok) setResources(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error("Failed to fetch library feed:", err);
       } finally {
@@ -90,9 +93,11 @@ const showToast = (msg, type = 'success') => {
     window.open(`${baseUrl}${cleanPath}`, '_blank');
   };
 
-  const handleDeleteRequest = async (e, resId) => {
+  // REPLACE your existing handleDeleteRequest function with this one:
+const handleDeleteRequest = async (e, resId) => {
     e.stopPropagation();
-    if (!window.confirm("Remove this from your library?")) return;
+    
+    if (!window.confirm("Are you sure you want to pull this contribution from the vault?")) return;
 
     try {
         const token = localStorage.getItem('rootle_token');
@@ -100,20 +105,23 @@ const showToast = (msg, type = 'success') => {
             method: 'DELETE',
             headers: { 'x-auth-token': token }
         });
-       if (response.ok) {
-      setResources(prev => prev.filter(res => res.id !== resId));
-      showToast("REMOVAL REQUEST SENT TO LECTURER", "success"); 
-    } else {
-      showToast("FAILED TO SEND REQUEST", "error"); 
+
+        if (response.ok) {
+            // Remove from local state immediately
+            setResources(prev => prev.filter(res => res.id !== resId));
+            showToast("REMOVAL REQUEST SENT", "success"); 
+        } else if (response.status === 403) {
+            showToast("UNAUTHORIZED: NOT YOUR FILE", "error"); 
+        } else {
+            showToast("ERROR SENDING REQUEST", "error"); 
+        }
+    } catch (err) {
+        showToast("NETWORK ERROR", "error");
     }
-  } catch (err) {
-    showToast("NETWORK ERROR", "error");
-  }
 };
 
   return (
     <div className="flex min-h-screen bg-[#F5F5DC]">
-      {/* SIDEBAR */}
       <aside className="w-72 bg-timber-800 text-timber-100 flex flex-col p-8 fixed h-full border-r-4 border-timber-500 shadow-2xl z-20">
         <div className="text-3xl font-display font-black tracking-tighter mb-12 text-gold-leaf">Rootle.</div>
         <nav className="space-y-6 flex-1">
@@ -131,7 +139,6 @@ const showToast = (msg, type = 'success') => {
             </motion.div>
           ))}
 
-          {/* REQUEST HUB NAVIGATION */}
           <motion.div 
             whileHover={{ x: 10, color: "#bf953f" }}
             onClick={() => navigate('/requests')}
@@ -220,6 +227,8 @@ const showToast = (msg, type = 'success') => {
             {resources.length > 0 ? (
               resources.map((res) => {
                 const fileInfo = getFileIcon(res.file_url);
+                const isOwner = res.uploader_id === user?.id; // Check ownership
+
                 return (
                   <motion.div 
                     key={res.id}
@@ -227,7 +236,7 @@ const showToast = (msg, type = 'success') => {
                     onClick={() => handleDownload(res.id, res.file_url)} 
                     className="bg-white border-4 border-timber-800 p-6 rounded-[30px] shadow-[10px_10px_0px_0px_rgba(62,39,35,1)] cursor-pointer group relative"
                   >
-                    {viewMode === 'My Library' && (
+                    {isOwner && (
                       <button 
                         onClick={(e) => handleDeleteRequest(e, res.id)}
                         className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full border-2 border-timber-800 flex items-center justify-center font-black opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-red-700"
@@ -237,7 +246,7 @@ const showToast = (msg, type = 'success') => {
                     )}
 
                     <div className="bg-timber-100 h-40 rounded-2xl mb-4 flex flex-col items-center justify-center border-2 border-dashed border-timber-300 group-hover:border-timber-800 transition-colors relative">
-                        {viewMode === 'World View' && (
+                        {(viewMode === 'World View' || viewMode === 'Trending Research') && (
                           <div className="absolute bottom-2 right-2 bg-timber-800 text-gold-leaf text-[7px] font-black px-2 py-1 rounded-md uppercase tracking-tighter">
                             {res.department_name}
                           </div>
@@ -266,12 +275,16 @@ const showToast = (msg, type = 'success') => {
         isVisible={toast.show} 
         message={toast.message} 
         type={toast.type} 
-        onClose={() => setToast({ ...toast, show: false })} 
+        onClose={() => setToast(prev => ({ ...prev, show: false }))} 
       />
       
       <AnimatePresence>
         {isModalOpen && (
-          <UploadModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+          <UploadModal 
+            isOpen={isModalOpen} 
+            onClose={() => setIsModalOpen(false)}
+            onUploadSuccess={showToast} // Fixed: Passing the function correctly
+          />
         )}
       </AnimatePresence>
     </div>

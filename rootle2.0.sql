@@ -63,14 +63,14 @@ CREATE TABLE IF NOT EXISTS deletion_requests (
 
 -- 7. SEED DATA & CONSTRAINTS
 INSERT INTO departments (name) VALUES 
-('Computer Science'), ('Law'), ('Medicine'), ('Business Administration'), ('General Studies')
+('Computer Science'), ('Law'), ('Medicine'), ('Business Administration'), ('General Studies'), ('Engineering')
 ON CONFLICT (name) DO NOTHING;
 
 -- Final constraint check for the Resources table
 ALTER TABLE resources 
 DROP CONSTRAINT IF EXISTS resources_department_id_fkey;
 
-INSERT INTO departments (name) VALUES ('Computer Science'), ('Law'), ('Medicine'), ('Business Administration'), ('General Studies') ON CONFLICT DO NOTHING;
+INSERT INTO departments (name) VALUES ('Computer Science'), ('Law'), ('Medicine'), ('Business Administration'), ('General Studies'), ('Engineering') ON CONFLICT DO NOTHING;
 
 ALTER TABLE resources 
 ADD CONSTRAINT resources_department_id_fkey 
@@ -84,15 +84,15 @@ CREATE TABLE IF NOT EXISTS departments (
 );
 
 INSERT INTO departments (name) VALUES 
-('Computer Science'), ('Law'), ('Medicine'), ('Business Administration'), ('General Studies')
-ON CONFLICT DO NOTHING;
+('Computer Science'), 
+('Law'), 
+('Medicine'), 
+('Business Administration'), 
+('General Studies'),
+('Engineering');
 
-CREATE TABLE IF NOT EXISTS resource_requests (
-    id SERIAL PRIMARY KEY,
-    requester_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    department_id INTEGER REFERENCES departments(id),
-    title VARCHAR(255) NOT NULL,
-    description TEXT,
-    is_fulfilled BOOLEAN DEFAULT false,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+-- Add hash column to prevent duplicate files
+ALTER TABLE resources ADD COLUMN IF NOT EXISTS file_hash TEXT;
+
+-- Track who fulfilled a request in the Hub
+ALTER TABLE resource_requests ADD COLUMN IF NOT EXISTS fulfilled_by INTEGER REFERENCES users(id);
