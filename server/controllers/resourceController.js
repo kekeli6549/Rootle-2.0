@@ -53,9 +53,7 @@ exports.uploadResource = async (req, res) => {
                 );
                 console.log(`✅ Success: Request ${parsedRequestId} fulfilled by ${uploaderId}`);
             } catch (fulfillmentErr) {
-                // If this fails, the file is still saved, but we log the specific DB issue
                 console.error("❌ DB SCHEMA ERROR:", fulfillmentErr.message);
-                console.error("Hint: Ensure you ran the ALTER TABLE command in pgAdmin.");
             }
         }
 
@@ -80,6 +78,7 @@ exports.getAllResources = async (req, res) => {
             LEFT JOIN departments d ON r.department_id = d.id
         `;
         
+        // Optional: Check if ratings table exists before querying
         try {
             const tableCheck = await pool.query("SELECT to_regclass('public.resource_ratings')");
             if (tableCheck.rows[0].to_regclass) {
@@ -220,7 +219,7 @@ exports.rateResource = async (req, res) => {
     } catch (err) { res.status(500).json({ message: "Rating failure" }); }
 };
 
-// --- 8. DELETION LOGIC ---
+// --- 8. DELETION LOGIC (UPDATED) ---
 exports.requestDeletion = async (req, res) => {
     try {
         await pool.query('INSERT INTO deletion_requests (resource_id, user_id) VALUES ($1, $2)', [req.params.id, req.user.id]);
@@ -228,8 +227,24 @@ exports.requestDeletion = async (req, res) => {
     } catch (err) { res.status(500).json({ message: "Request failed" }); }
 };
 
+exports.getDeletionRequests = async (req, res) => {
+    try {
+        // IMPORTANT: Returning both ID of the request (request_id) and ID of the resource (resource_id)
+        const result = await pool.query(`
+            SELECT dr.id as request_id, r.title, u.full_name as student_name, r.id as resource_id, r.file_url, r.category 
+            FROM deletion_requests dr 
+            JOIN resources r ON dr.resource_id = r.id 
+            JOIN users u ON dr.user_id = u.id 
+            WHERE r.department_id = $1`, 
+            [req.user.department_id]
+        );
+        res.json(result.rows || []);
+    } catch (err) { res.status(500).json([]); }
+};
+
 exports.rejectDeletion = async (req, res) => {
     try {
+        // Expects the Deletion Request ID
         await pool.query("DELETE FROM deletion_requests WHERE id = $1", [req.params.id]);
         res.json({ message: "Preserved." });
     } catch (err) { res.status(500).json({ message: "Failed" }); }
@@ -237,19 +252,19 @@ exports.rejectDeletion = async (req, res) => {
 
 exports.permanentDelete = async (req, res) => {
     try {
+        // Expects the Resource ID
         const resource = await pool.query('SELECT file_url FROM resources WHERE id = $1', [req.params.id]);
-        if (resource.rows.length > 0 && fs.existsSync(resource.rows[0].file_url)) fs.unlinkSync(resource.rows[0].file_url);
+        
+        if (resource.rows.length > 0 && fs.existsSync(resource.rows[0].file_url)) {
+            fs.unlinkSync(resource.rows[0].file_url);
+        }
+
+        // Clean up both tables to avoid foreign key constraints
         await pool.query("DELETE FROM deletion_requests WHERE resource_id = $1", [req.params.id]);
         await pool.query("DELETE FROM resources WHERE id = $1", [req.params.id]);
+        
         res.json({ message: "Purged." });
     } catch (err) { res.status(500).json({ message: "Purge failed" }); }
-};
-
-exports.getDeletionRequests = async (req, res) => {
-    try {
-        const result = await pool.query(`SELECT dr.id, r.title, u.full_name as student_name, r.id as resource_id FROM deletion_requests dr JOIN resources r ON dr.resource_id = r.id JOIN users u ON dr.user_id = u.id WHERE r.department_id = $1`, [req.user.department_id]);
-        res.json(result.rows || []);
-    } catch (err) { res.status(500).json([]); }
 };
 
 // --- 9. APPROVAL & DOWNLOADS ---

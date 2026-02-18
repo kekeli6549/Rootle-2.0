@@ -23,13 +23,11 @@ const LecturerDashboard = () => {
   const BACKEND_URL = "http://localhost:5000";
 
   const fetchDashboardData = async () => {
-    // FIX 1: Strict guard against undefined user data to prevent 500 errors
     if (!user || !user.id) return;
     
     setLoading(true);
     try {
       let endpoint = '';
-      // Ensure deptId is a valid number/string and not 'undefined'
       const deptId = user?.departmentId || user?.department_id;
 
       if (activeTab === 'Review Queue') {
@@ -78,12 +76,17 @@ const LecturerDashboard = () => {
       let endpoint = '';
       let method = '';
 
-      // FIX 2: Correcting the endpoint paths to match Backend routes (fixing 404s)
       if (activeTab === 'Deletion Inbox') {
-          endpoint = action === 'permanent' 
-            ? `${BACKEND_URL}/api/resources/admin/permanent/${id}` // Changed from permanent-delete to permanent
-            : `${BACKEND_URL}/api/resources/admin/reject-deletion/${id}`;
-          method = 'DELETE';
+          // If rejecting deletion, we target the Request ID. If Purging, we target the Resource ID.
+          // The 'id' passed to this function will be different based on the button clicked.
+          if (action === 'permanent') {
+            endpoint = `${BACKEND_URL}/api/resources/admin/permanent/${id}`;
+            method = 'DELETE';
+          } else {
+             // action is 'reject'
+             endpoint = `${BACKEND_URL}/api/resources/admin/reject-deletion/${id}`;
+             method = 'DELETE';
+          }
       } 
       else {
           if (action === 'permanent') {
@@ -129,7 +132,7 @@ const LecturerDashboard = () => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/resources/upload`, {
         method: 'POST',
-        headers: { 'x-auth-token': token }, // Do NOT set Content-Type here, browser sets it for FormData
+        headers: { 'x-auth-token': token },
         body: formData
       });
 
@@ -213,8 +216,8 @@ const LecturerDashboard = () => {
             <motion.div key={activeTab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
               {dataList.length > 0 ? dataList.map((item) => {
                 const isMyDepartment = (item.department_id === user?.departmentId || item.departmentId === user?.departmentId);
-                const targetId = activeTab === 'Deletion Inbox' ? item.resource_id : item.id;
 
+                // --- 1. RENDER WISHLIST CARDS ---
                 if (activeTab === 'Community Wishlist') {
                   return (
                     <div key={item.id} className="bg-white border-4 border-timber-800 p-8 rounded-[40px] flex justify-between items-center shadow-[15px_15px_0px_0px_#3E2723]">
@@ -229,11 +232,12 @@ const LecturerDashboard = () => {
                           setIsModalOpen(true); 
                       }} className="px-6 py-3 bg-timber-800 text-gold-leaf font-black text-[10px] uppercase rounded-xl hover:scale-105 transition-all">Fulfill Request</button>
                     </div>
-                  )
+                  );
                 }
 
+                // --- 2. RENDER STANDARD RESOURCE CARDS ---
                 return (
-                    <div key={item.id} className="bg-white border-4 border-timber-800 p-8 rounded-[40px] flex justify-between items-center shadow-[15px_15px_0px_0px_#3E2723] group transition-all">
+                    <div key={item.id || item.request_id} className="bg-white border-4 border-timber-800 p-8 rounded-[40px] flex justify-between items-center shadow-[15px_15px_0px_0px_#3E2723] group transition-all">
                         <div className="flex gap-6 items-center">
                             <div className="w-16 h-16 bg-timber-100 rounded-2xl flex items-center justify-center text-3xl border-2 border-timber-800 group-hover:bg-gold-leaf transition-colors">
                             {item.category === 'Past Question' ? '📜' : '📄'}
@@ -249,20 +253,24 @@ const LecturerDashboard = () => {
                         
                         <div className="flex gap-3">
                             <button onClick={() => handleViewFile(item.file_url)} className="px-6 py-2 bg-timber-100 text-timber-800 border-2 border-timber-800 font-black text-[9px] uppercase rounded-lg">Preview</button>
+                            
                             {activeTab === 'Review Queue' && (
                                 <>
-                                    <button onClick={() => handleAction(targetId, 'reject')} className="px-6 py-2 bg-red-100 text-red-900 border-2 border-red-900 font-black text-[9px] uppercase rounded-lg">Reject</button>
-                                    <button onClick={() => handleAction(targetId, 'approve')} className="px-6 py-2 bg-timber-800 text-gold-leaf font-black text-[9px] uppercase rounded-lg">Approve</button>
+                                    <button onClick={() => handleAction(item.id, 'reject')} className="px-6 py-2 bg-red-100 text-red-900 border-2 border-red-900 font-black text-[9px] uppercase rounded-lg">Reject</button>
+                                    <button onClick={() => handleAction(item.id, 'approve')} className="px-6 py-2 bg-timber-800 text-gold-leaf font-black text-[9px] uppercase rounded-lg">Approve</button>
                                 </>
                             )}
+                            
                             {activeTab === 'Deletion Inbox' && (
                                 <>
-                                    <button onClick={() => handleAction(item.id, 'reject')} className="px-6 py-2 bg-timber-100 text-timber-800 border-2 border-timber-800 font-black text-[9px] uppercase rounded-lg">Keep File</button>
-                                    <button onClick={() => handleAction(targetId, 'permanent')} className="px-6 py-2 bg-red-900 text-white font-black text-[9px] uppercase rounded-lg hover:bg-black">Confirm Purge</button>
+                                    {/* Pass request_id to reject (Keep File), pass resource_id to purge */}
+                                    <button onClick={() => handleAction(item.request_id, 'reject')} className="px-6 py-2 bg-timber-100 text-timber-800 border-2 border-timber-800 font-black text-[9px] uppercase rounded-lg">Keep File</button>
+                                    <button onClick={() => handleAction(item.resource_id, 'permanent')} className="px-6 py-2 bg-red-900 text-white font-black text-[9px] uppercase rounded-lg hover:bg-black">Confirm Purge</button>
                                 </>
                             )}
+
                             {(activeTab === 'Department Vault' || (activeTab === 'World Library' && isMyDepartment)) && (
-                                <button onClick={() => handleAction(targetId, 'permanent')} className="px-6 py-2 bg-red-900 text-white font-black text-[9px] uppercase rounded-lg hover:bg-black transition-all">
+                                <button onClick={() => handleAction(item.id, 'permanent')} className="px-6 py-2 bg-red-900 text-white font-black text-[9px] uppercase rounded-lg hover:bg-black transition-all">
                                     Delete
                                 </button>
                             )}
