@@ -1,14 +1,12 @@
 Things to fix in project
 
-You have to fix from the upload for both the student and lecturer
-1. Fix student upload to make sure it goes through the checking of the department specific side then when approved shows
-in both world view and department specific view page and if its checked multiple times let it  be shown multiple times
 
-2. For the lecturer when a resource is uploaded successfully let it show on both the student and lecturers deparment view and world view
-
-3. Let the files uploaded be able to be downloaded, by both parties.
-
-4. let lecturer be able  to view sent files to cross check it and approve/disapprove it or delete it where necessary
-
-5. let the User experience to reach dashboard be for student : register -> login -> dashboard  , then for lecturers(admin)
+1. let the User experience to reach dashboard be for student : register -> login -> dashboard  , then for lecturers(admin)
 : register -> admin login -> admin dashboard 
+ and on terminate session on the admin dashboard let it be admin dashboard -> Adminlogin 
+
+2. I Have to add a Ranking page that ranks the top contributors, with their details . It will also have badges that signify How much resources you have provided e.g Level 1 to 5, where level 1 is 10 resources, level 2 is 100 then level 3 is 250 resources then level 4 is 500 resources the level 5 is 1000 resources. There will also a be a filter for lecturers
+
+3. To make a simple custom pass key generator for the admins for security, something simple
+
+4. Then add the logo everywhere and do any cosmetic fixes like "misplaced styling etc." 
