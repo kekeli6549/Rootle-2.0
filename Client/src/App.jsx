@@ -12,7 +12,8 @@ import Register from './pages/Register';
 import AdminLogin from './pages/AdminLogin';
 import Dashboard from './pages/Dashboard';
 import LecturerDashboard from './pages/LecturerDashboard';
-import RequestHub from './pages/RequestHub'; // NEW IMPORT
+import RequestHub from './pages/RequestHub';
+import Leaderboard from './pages/Leaderboard'; // ✅ NEW IMPORT
 
 const ProtectedRoute = ({ children, allowedRole }) => {
   const { user, loading } = useAuth();
@@ -55,12 +56,22 @@ function App() {
               } 
             />
 
-            {/* REQUEST HUB (Accessible by everyone logged in) */}
+            {/* REQUEST HUB */}
             <Route 
               path="/requests" 
               element={
                 <ProtectedRoute>
                   <RequestHub />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* LEADER HUB / HALL OF FAME */}
+            <Route 
+              path="/leaderboard" 
+              element={
+                <ProtectedRoute>
+                  <Leaderboard />
                 </ProtectedRoute>
               } 
             />

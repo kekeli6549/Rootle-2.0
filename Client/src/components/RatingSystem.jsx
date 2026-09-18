@@ -1,7 +1,6 @@
 import React from 'react';
 
 const RatingSystem = ({ currentRating, onRate }) => {
-  // Ensure we display a clean decimal for the average
   const displayAvg = Number(currentRating || 0).toFixed(1);
 
   return (

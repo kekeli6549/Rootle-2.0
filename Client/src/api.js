@@ -2,10 +2,11 @@ import axios from 'axios';
 
 const API = axios.create({ baseURL: 'http://localhost:5000/api' });
 
-// This automatically attaches your JWT token to every request
+// Automatically attaches your JWT token to every request
 API.interceptors.request.use((req) => {
-    if (localStorage.getItem('token')) {
-        req.headers['x-auth-token'] = localStorage.getItem('token');
+    const token = localStorage.getItem('rootle_token'); 
+    if (token) {
+        req.headers['x-auth-token'] = token;
     }
     return req;
 });

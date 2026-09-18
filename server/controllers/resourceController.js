@@ -1,8 +1,11 @@
-const pool = require('../config/db');
+const Resource = require('../models/Resource');
+const ResourceRequest = require('../models/ResourceRequest');
+const ResourceRating = require('../models/ResourceRating');
+const User = require('../models/User');
 const crypto = require('crypto');
 const fs = require('fs');
 
-// --- 1. UPLOAD RESOURCE (STABILIZED & PERMANENT FIX) ---
+// --- 1. UPLOAD RESOURCE ---
 exports.uploadResource = async (req, res) => {
     let filePath = req.file ? req.file.path : null;
     try {
@@ -11,53 +14,43 @@ exports.uploadResource = async (req, res) => {
         const { title, category, requestId } = req.body; 
         const uploaderId = req.user.id; 
 
-        // Get uploader's department
-        const userResult = await pool.query('SELECT department_id FROM users WHERE id = $1', [uploaderId]);
-        const departmentId = userResult.rows[0]?.department_id;
+        const user = await User.findById(uploaderId);
+        const departmentId = user?.department_id;
 
         if (!departmentId) {
             if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath); 
             return res.status(400).json({ message: "Account not linked to a department." });
         }
 
-        // Duplicate Check via Hash
         const fileBuffer = fs.readFileSync(filePath);
         const fileHash = crypto.createHash('md5').update(fileBuffer).digest('hex');
-        const existingFile = await pool.query('SELECT id FROM resources WHERE file_hash = $1', [fileHash]);
+        const existingFile = await Resource.findOne({ file_hash: fileHash });
 
-        if (existingFile.rows.length > 0) {
+        if (existingFile) {
             if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath); 
             return res.status(400).json({ message: "Duplicate alert: File already exists." });
         }
 
-        // Insert into resources
-        const newResource = await pool.query(
-            `INSERT INTO resources 
-            (uploader_id, department_id, title, category, file_url, file_hash, file_type, status) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'approved') RETURNING *`,
-            [uploaderId, departmentId, title, category, filePath, fileHash, req.file.mimetype]
-        );
+        const newResource = await Resource.create({
+            uploader_id: uploaderId,
+            department_id: departmentId,
+            title,
+            category,
+            file_url: filePath,
+            file_hash: fileHash,
+            file_type: req.file.mimetype,
+            status: 'approved'
+        });
 
-        // --- PERMANENT FULFILLMENT FIX ---
-        const parsedRequestId = parseInt(requestId);
-        if (requestId && !isNaN(parsedRequestId)) {
-            try {
-                // Using explicit column names to match the ALTER TABLE command
-                await pool.query(
-                    `UPDATE resource_requests 
-                     SET is_fulfilled = true, 
-                         fulfilled_by = $1, 
-                         fulfilled_at = CURRENT_TIMESTAMP 
-                     WHERE id = $2`, 
-                    [uploaderId, parsedRequestId]
-                );
-                console.log(`✅ Success: Request ${parsedRequestId} fulfilled by ${uploaderId}`);
-            } catch (fulfillmentErr) {
-                console.error("❌ DB SCHEMA ERROR:", fulfillmentErr.message);
-            }
+        if (requestId) {
+            await ResourceRequest.findByIdAndUpdate(requestId, {
+                is_fulfilled: true,
+                fulfilled_by: uploaderId,
+                fulfilled_at: Date.now()
+            });
         }
 
-        res.status(201).json(newResource.rows[0]);
+        res.status(201).json(newResource);
     } catch (err) {
         console.error("CRITICAL BACKEND ERROR:", err.message);
         if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
@@ -69,61 +62,51 @@ exports.uploadResource = async (req, res) => {
 exports.getAllResources = async (req, res) => {
     try {
         const { search, category, departmentId, status, trending, mine } = req.query;
-        
-        let queryText = `
-            SELECT r.*, u.full_name as uploader_name, d.name as department_name,
-            0 as average_rating
-            FROM resources r
-            LEFT JOIN users u ON r.uploader_id = u.id
-            LEFT JOIN departments d ON r.department_id = d.id
-        `;
-        
-        // Optional: Check if ratings table exists before querying
-        try {
-            const tableCheck = await pool.query("SELECT to_regclass('public.resource_ratings')");
-            if (tableCheck.rows[0].to_regclass) {
-                queryText = `
-                    SELECT r.*, u.full_name as uploader_name, d.name as department_name,
-                    COALESCE((SELECT AVG(rating_value) FROM resource_ratings WHERE resource_id = r.id), 0) as average_rating
-                    FROM resources r
-                    LEFT JOIN users u ON r.uploader_id = u.id
-                    LEFT JOIN departments d ON r.department_id = d.id
-                `;
-            }
-        } catch (e) { console.log("Ratings table skip."); }
-        
-        let queryParams = [];
-        let conditions = [];
+        let query = {};
 
         if (mine === 'true') {
-            queryParams.push(req.user.id);
-            conditions.push(`r.uploader_id = $${queryParams.length}`);
+            query.uploader_id = req.user.id;
         } else {
-            queryParams.push(status === 'pending' ? 'pending' : 'approved');
-            conditions.push(`r.status = $${queryParams.length}`);
+            query.status = status === 'pending' ? 'pending' : 'approved';
         }
 
         if (search && search !== 'undefined') {
-            queryParams.push(`%${search}%`);
-            conditions.push(`r.title ILIKE $${queryParams.length}`);
+            query.title = { $regex: search, $options: 'i' };
         }
         
         if (category && category !== 'All' && category !== 'undefined') {
-            queryParams.push(category);
-            conditions.push(`r.category = $${queryParams.length}`);
+            query.category = category;
         }
 
         if (departmentId && departmentId !== 'undefined' && departmentId !== 'null') {
-            queryParams.push(departmentId);
-            conditions.push(`r.department_id = $${queryParams.length}`);
+            query.department_id = departmentId;
         }
 
-        if (conditions.length > 0) queryText += ` WHERE ` + conditions.join(' AND ');
-        queryText += trending === 'true' ? ` ORDER BY r.download_count DESC` : ` ORDER BY r.created_at DESC`;
+        let sortOption = { createdAt: -1 };
+        if (trending === 'true') {
+            sortOption = { download_count: -1 };
+        }
 
-        const resources = await pool.query(queryText, queryParams);
-        res.json(resources.rows || []);
+        const resources = await Resource.find(query)
+            .populate('uploader_id', 'full_name')
+            .populate('department_id', 'name')
+            .sort(sortOption);
+
+        const formattedResources = await Promise.all(resources.map(async (resItem) => {
+            const ratings = await ResourceRating.find({ resource_id: resItem._id });
+            const avgRating = ratings.length > 0 ? ratings.reduce((acc, r) => acc + r.rating_value, 0) / ratings.length : 0;
+            
+            return {
+                ...resItem.toObject(),
+                uploader_name: resItem.uploader_id?.full_name,
+                department_name: resItem.department_id?.name,
+                average_rating: avgRating
+            };
+        }));
+
+        res.json(formattedResources);
     } catch (err) {
+        console.error("Get Resources Error:", err.message);
         res.status(500).json({ message: "Error fetching resources" });
     }
 };
@@ -132,23 +115,24 @@ exports.getAllResources = async (req, res) => {
 exports.getRequests = async (req, res) => {
     try {
         const { departmentId } = req.query;
-        let query = `
-            SELECT rr.*, u.full_name as student_name, d.name as department_name 
-            FROM resource_requests rr 
-            LEFT JOIN users u ON rr.requester_id = u.id 
-            LEFT JOIN departments d ON rr.department_id = d.id
-            WHERE rr.is_fulfilled = false`;
-        
-        let params = [];
+        let query = { is_fulfilled: false };
         if (departmentId && departmentId !== 'undefined' && departmentId !== 'null') {
-            params.push(departmentId);
-            query += ` AND rr.department_id = $${params.length}`;
+            query.department_id = departmentId;
         }
-        
-        const result = await pool.query(query + ` ORDER BY rr.created_at DESC`, params);
-        res.json(result.rows || []);
+
+        const requests = await ResourceRequest.find(query)
+            .populate('requester_id', 'full_name')
+            .populate('department_id', 'name')
+            .sort({ createdAt: -1 });
+
+        const formatted = requests.map(r => ({
+            ...r.toObject(),
+            student_name: r.requester_id?.full_name,
+            department_name: r.department_id?.name
+        }));
+
+        res.json(formatted || []);
     } catch (err) {
-        console.error("Get Requests Error:", err.message);
         res.status(500).json([]);
     }
 };
@@ -157,29 +141,28 @@ exports.getRequests = async (req, res) => {
 exports.createRequest = async (req, res) => {
     try {
         const { title, description, departmentId } = req.body;
-        const result = await pool.query(
-            `INSERT INTO resource_requests (requester_id, department_id, title, description) 
-             VALUES ($1, $2, $3, $4) RETURNING *`,
-            [req.user.id, departmentId || null, title, description]
-        );
-        res.status(201).json(result.rows[0]);
-    } catch (err) { res.status(500).json({ message: "Request failure" }); }
+        const newReq = await ResourceRequest.create({
+            requester_id: req.user.id,
+            department_id: departmentId || null,
+            title,
+            description
+        });
+        res.status(201).json(newReq);
+    } catch (err) { 
+        res.status(500).json({ message: "Request failure" }); 
+    }
 };
 
-// --- 5. FULFILL REQUEST (MANUAL OVERRIDE) ---
+// --- 5. FULFILL REQUEST ---
 exports.fulfillRequest = async (req, res) => {
     try {
-        await pool.query(
-            `UPDATE resource_requests 
-             SET is_fulfilled = true, 
-                 fulfilled_by = $1, 
-                 fulfilled_at = CURRENT_TIMESTAMP 
-             WHERE id = $2`, 
-            [req.user.id, req.params.id]
-        );
+        await ResourceRequest.findByIdAndUpdate(req.params.id, {
+            is_fulfilled: true,
+            fulfilled_by: req.user.id,
+            fulfilled_at: Date.now()
+        });
         res.json({ message: "Handled! 🤝" });
     } catch (err) { 
-        console.error("Manual Fulfillment Error:", err.message);
         res.status(500).json({ message: "Fulfillment failed" }); 
     }
 };
@@ -189,95 +172,183 @@ exports.getDepartmentStats = async (req, res) => {
     try {
         let deptId = req.user.department_id;
         if (!deptId) {
-            const user = await pool.query('SELECT department_id FROM users WHERE id = $1', [req.user.id]);
-            deptId = user.rows[0]?.department_id;
+            const user = await User.findById(req.user.id);
+            deptId = user?.department_id;
         }
         if (!deptId) return res.json({ total_downloads: 0, total_resources: 0, open_requests: 0 });
 
-        const result = await pool.query(`
-            SELECT 
-                COALESCE(SUM(download_count), 0) as total_downloads,
-                COUNT(id) as total_resources,
-                (SELECT COUNT(*) FROM resource_requests WHERE department_id = $1 AND is_fulfilled = false) as open_requests
-            FROM resources 
-            WHERE department_id = $1 AND status = 'approved'
-        `, [deptId]);
-        res.json(result.rows[0]);
-    } catch (err) { res.status(500).json({ message: "Stats failure" }); }
+        const resources = await Resource.find({ department_id: deptId, status: 'approved' });
+        const totalResources = resources.length;
+        const totalDownloads = resources.reduce((acc, r) => acc + (r.download_count || 0), 0);
+        const openRequests = await ResourceRequest.countDocuments({ department_id: deptId, is_fulfilled: false });
+
+        res.json({
+            total_downloads: totalDownloads,
+            total_resources: totalResources,
+            open_requests: openRequests
+        });
+    } catch (err) { 
+        res.status(500).json({ message: "Stats failure" }); 
+    }
 };
 
 // --- 7. RATINGS ---
 exports.rateResource = async (req, res) => {
     try {
         const { resourceId, rating } = req.body;
-        await pool.query(`
-            INSERT INTO resource_ratings (resource_id, user_id, rating_value)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (resource_id, user_id) DO UPDATE SET rating_value = EXCLUDED.rating_value
-        `, [resourceId, req.user.id, rating]);
-        res.json({ message: "Rating recorded" });
-    } catch (err) { res.status(500).json({ message: "Rating failure" }); }
-};
-
-// --- 8. DELETION LOGIC (UPDATED) ---
-exports.requestDeletion = async (req, res) => {
-    try {
-        await pool.query('INSERT INTO deletion_requests (resource_id, user_id) VALUES ($1, $2)', [req.params.id, req.user.id]);
-        res.json({ message: "Review pending." });
-    } catch (err) { res.status(500).json({ message: "Request failed" }); }
-};
-
-exports.getDeletionRequests = async (req, res) => {
-    try {
-        // IMPORTANT: Returning both ID of the request (request_id) and ID of the resource (resource_id)
-        const result = await pool.query(`
-            SELECT dr.id as request_id, r.title, u.full_name as student_name, r.id as resource_id, r.file_url, r.category 
-            FROM deletion_requests dr 
-            JOIN resources r ON dr.resource_id = r.id 
-            JOIN users u ON dr.user_id = u.id 
-            WHERE r.department_id = $1`, 
-            [req.user.department_id]
+        await ResourceRating.findOneAndUpdate(
+            { resource_id: resourceId, user_id: req.user.id },
+            { rating_value: rating },
+            { upsert: true, new: true }
         );
-        res.json(result.rows || []);
-    } catch (err) { res.status(500).json([]); }
+        res.json({ message: "Rating recorded" });
+    } catch (err) { 
+        res.status(500).json({ message: "Rating failure" }); 
+    }
 };
 
-exports.rejectDeletion = async (req, res) => {
+// --- 8. RANKINGS & BADGES ---
+exports.getRankings = async (req, res) => {
     try {
-        // Expects the Deletion Request ID
-        await pool.query("DELETE FROM deletion_requests WHERE id = $1", [req.params.id]);
-        res.json({ message: "Preserved." });
-    } catch (err) { res.status(500).json({ message: "Failed" }); }
-};
+        const { role } = req.query;
 
-exports.permanentDelete = async (req, res) => {
-    try {
-        // Expects the Resource ID
-        const resource = await pool.query('SELECT file_url FROM resources WHERE id = $1', [req.params.id]);
-        
-        if (resource.rows.length > 0 && fs.existsSync(resource.rows[0].file_url)) {
-            fs.unlinkSync(resource.rows[0].file_url);
+        let pipeline = [
+            { $match: { status: 'approved' } },
+            { $group: { _id: '$uploader_id', totalUploads: { $sum: 1 } } },
+            { $sort: { totalUploads: -1 } },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: '_id',
+                    foreignField: '_id',
+                    as: 'userInfo'
+                }
+            },
+            { $unwind: '$userInfo' }
+        ];
+
+        if (role && role !== 'All') {
+            pipeline.push({ $match: { 'userInfo.role': role } });
         }
 
-        // Clean up both tables to avoid foreign key constraints
-        await pool.query("DELETE FROM deletion_requests WHERE resource_id = $1", [req.params.id]);
-        await pool.query("DELETE FROM resources WHERE id = $1", [req.params.id]);
-        
-        res.json({ message: "Purged." });
-    } catch (err) { res.status(500).json({ message: "Purge failed" }); }
+        const rankings = await Resource.aggregate(pipeline);
+
+        const formattedRankings = rankings.map((item, index) => {
+            const count = item.totalUploads;
+            let level = 0;
+            let badgeTitle = 'No Badge';
+
+            if (count >= 1000) { level = 5; badgeTitle = 'Level 5 Arch-Contributor'; }
+            else if (count >= 500) { level = 4; badgeTitle = 'Level 4 Elite Scholar'; }
+            else if (count >= 250) { level = 3; badgeTitle = 'Level 3 Master Upload'; }
+            else if (count >= 100) { level = 2; badgeTitle = 'Level 2 Senior Provider'; }
+            else if (count >= 10) { level = 1; badgeTitle = 'Level 1 Contributor'; }
+
+            return {
+                rank: index + 1,
+                userId: item._id,
+                fullName: item.userInfo.full_name,
+                email: item.userInfo.email,
+                role: item.userInfo.role,
+                totalUploads: count,
+                level,
+                badgeTitle
+            };
+        });
+
+        res.json(formattedRankings);
+    } catch (err) {
+        console.error("Rankings Error:", err.message);
+        res.status(500).json({ message: "Failed to fetch leaderboard rankings" });
+    }
 };
 
-// --- 9. APPROVAL & DOWNLOADS ---
-exports.approveResource = async (req, res) => {
-    try {
-        await pool.query("UPDATE resources SET status = 'approved' WHERE id = $1", [req.params.id]);
-        res.json({ message: "Approved!" });
-    } catch (err) { res.status(500).json({ message: "Failed" }); }
-};
-
+// --- 9. DOWNLOAD INCREMENT ---
 exports.incrementDownload = async (req, res) => {
     try {
-        await pool.query('UPDATE resources SET download_count = download_count + 1 WHERE id = $1', [req.params.id]);
+        await Resource.findByIdAndUpdate(req.params.id, { $inc: { download_count: 1 } });
         res.json({ message: "Counted." });
-    } catch (err) { res.status(500).json({ message: "Error" }); }
+    } catch (err) { 
+        res.status(500).json({ message: "Error" }); 
+    }
+};
+
+// --- 10. NEW: DELETION & ADMIN WORKFLOW HANDLERS ---
+
+// Request resource deletion (Student)
+exports.requestDeletion = async (req, res) => {
+    try {
+        const resource = await Resource.findById(req.params.id);
+        if (!resource) return res.status(404).json({ message: "Resource not found." });
+
+        // Flag resource status as deletion requested
+        resource.status = 'deletion_requested';
+        await resource.save();
+        res.json({ message: "Deletion request submitted to admin." });
+    } catch (err) {
+        res.status(500).json({ message: "Error requesting deletion" });
+    }
+};
+
+// Admin approve resource
+exports.approveResource = async (req, res) => {
+    try {
+        const resource = await Resource.findByIdAndUpdate(
+            req.params.id, 
+            { status: 'approved' }, 
+            { new: true }
+        );
+        if (!resource) return res.status(404).json({ message: "Resource not found" });
+        res.json({ message: "Resource approved successfully!" });
+    } catch (err) {
+        res.status(500).json({ message: "Error approving resource" });
+    }
+};
+
+// Get all pending deletion requests (Admin)
+exports.getDeletionRequests = async (req, res) => {
+    try {
+        const requests = await Resource.find({ status: 'deletion_requested' })
+            .populate('uploader_id', 'full_name email')
+            .populate('department_id', 'name');
+        res.json(requests);
+    } catch (err) {
+        res.status(500).json({ message: "Error fetching deletion requests" });
+    }
+};
+
+// Reject deletion request (Admin - restores status back to approved)
+exports.rejectDeletion = async (req, res) => {
+    try {
+        const resource = await Resource.findByIdAndUpdate(
+            req.params.id, 
+            { status: 'approved' }, 
+            { new: true }
+        );
+        if (!resource) return res.status(404).json({ message: "Resource not found" });
+        res.json({ message: "Deletion request rejected. Resource restored." });
+    } catch (err) {
+        res.status(500).json({ message: "Error rejecting deletion request" });
+    }
+};
+
+// Permanent delete resource (Admin)
+exports.permanentDelete = async (req, res) => {
+    try {
+        const resource = await Resource.findById(req.params.id);
+        if (!resource) return res.status(404).json({ message: "Resource not found" });
+
+        // Delete physical file if it exists
+        if (resource.file_url && fs.existsSync(resource.file_url)) {
+            fs.unlinkSync(resource.file_url);
+        }
+
+        await Resource.findByIdAndDelete(req.params.id);
+        await ResourceRating.deleteMany({ resource_id: req.params.id });
+
+        res.json({ message: "Resource permanently deleted." });
+    } catch (err) {
+        console.error("Permanent delete error:", err.message);
+        res.status(500).json({ message: "Error performing permanent deletion" });
+    }
 };

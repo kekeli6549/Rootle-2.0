@@ -1,76 +1,119 @@
-// server/controllers/adminController.js
-const pool = require('../config/db');
+const Resource = require('../models/Resource');
+const User = require('../models/User');
+const Department = require('../models/Department');
+const Faculty = require('../models/Faculty');
+const DeletionRequest = require('../models/DeletionRequest');
 const fs = require('fs');
 
 exports.getDashboardStats = async (req, res) => {
     try {
-        // 1. Get Total Counts (Using multiple queries in parallel for speed)
-        const userCount = await pool.query('SELECT COUNT(*) FROM users');
-        const resourceCount = await pool.query('SELECT COUNT(*) FROM resources');
-        const deptCount = await pool.query('SELECT COUNT(*) FROM departments');
+        const userCount = await User.countDocuments();
+        const resourceCount = await Resource.countDocuments();
+        const deptCount = await Department.countDocuments();
 
-        // 2. Resources per Faculty (For Pie/Bar Chart)
-        // We JOIN resources to departments to faculties to get names
-        const distribution = await pool.query(`
-            SELECT f.name, COUNT(r.id) as total 
-            FROM faculties f
-            LEFT JOIN departments d ON f.id = d.faculty_id
-            LEFT JOIN resources r ON d.id = r.department_id
-            GROUP BY f.name
-        `);
+        // Resources distribution grouped by Faculty
+        const faculties = await Faculty.find();
+        const distribution = await Promise.all(faculties.map(async (faculty) => {
+            const depts = await Department.find({ faculty_id: faculty._id });
+            const deptIds = depts.map(d => d._id);
+            const totalRes = await Resource.countDocuments({ department_id: { $in: deptIds } });
+            return { name: faculty.name, total: totalRes };
+        }));
 
-        // 3. Recent Uploads
-        const recentResources = await pool.query(`
-            SELECT r.title, u.full_name as uploader, r.created_at 
-            FROM resources r
-            JOIN users u ON r.uploader_id = u.id
-            ORDER BY r.created_at DESC
-            LIMIT 5
-        `);
+        // Recent Uploads
+        const recentResources = await Resource.find({ status: 'approved' })
+            .populate('uploader_id', 'full_name')
+            .sort({ created_at: -1 })
+            .limit(5);
+
+        const formattedRecent = recentResources.map(r => ({
+            title: r.title,
+            uploader: r.uploader_id?.full_name || 'Unknown',
+            created_at: r.created_at
+        }));
 
         res.json({
             totals: {
-                users: parseInt(userCount.rows[0].count),
-                resources: parseInt(resourceCount.rows[0].count),
-                departments: parseInt(deptCount.rows[0].count)
+                users: userCount,
+                resources: resourceCount,
+                departments: deptCount
             },
-            chartData: distribution.rows,
-            recentActivity: recentResources.rows
+            chartData: distribution,
+            recentActivity: formattedRecent
         });
 
     } catch (err) {
-        console.error(err.message);
+        console.error("Dashboard Stats Error:", err.message);
         res.status(500).send("Server Error fetching analytics");
     }
 };
 
-// FIX: Added the missing permanentDelete function to resolve the Route crash
 exports.permanentDelete = async (req, res) => {
     try {
         const { id } = req.params;
-
-        // 1. Get the file path first to delete from storage
-        const resource = await pool.query('SELECT file_url FROM resources WHERE id = $1', [id]);
+        const resource = await Resource.findById(id);
         
-        if (resource.rows.length === 0) {
+        if (!resource) {
             return res.status(404).json({ message: "Resource not found" });
         }
 
-        const filePath = resource.rows[0].file_url;
-
-        // 2. Delete file from physical storage (The Vault)
-        if (fs.existsSync(filePath)) {
+        const filePath = resource.file_url;
+        if (filePath && fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
         }
 
-        // 3. Delete from database (deletion_requests and resources tables)
-        // Note: If you have ON DELETE CASCADE in your DB, deleting from resources is enough
-        await pool.query("DELETE FROM deletion_requests WHERE resource_id = $1", [id]);
-        await pool.query("DELETE FROM resources WHERE id = $1", [id]);
+        await DeletionRequest.deleteMany({ resource_id: id });
+        await Resource.findByIdAndDelete(id);
 
         res.json({ message: "File purged successfully from system." });
     } catch (err) {
         console.error("Purge Error:", err.message);
         res.status(500).json({ message: "Failed to permanently delete file" });
+    }
+};
+
+exports.getDeletionRequests = async (req, res) => {
+    try {
+        const deptId = req.user.department_id;
+        const requests = await DeletionRequest.find()
+            .populate({
+                path: 'resource_id',
+                match: { department_id: deptId },
+                populate: { path: 'department_id' }
+            })
+            .populate('user_id', 'full_name');
+
+        const validRequests = requests
+            .filter(dr => dr.resource_id !== null)
+            .map(dr => ({
+                request_id: dr._id,
+                title: dr.resource_id.title,
+                student_name: dr.user_id?.full_name,
+                resource_id: dr.resource_id._id,
+                file_url: dr.resource_id.file_url,
+                category: dr.resource_id.category
+            }));
+
+        res.json(validRequests || []);
+    } catch (err) {
+        res.status(500).json([]);
+    }
+};
+
+exports.rejectDeletion = async (req, res) => {
+    try {
+        await DeletionRequest.findByIdAndDelete(req.params.id);
+        res.json({ message: "Preserved." });
+    } catch (err) { 
+        res.status(500).json({ message: "Failed" }); 
+    }
+};
+
+exports.approveResource = async (req, res) => {
+    try {
+        await Resource.findByIdAndUpdate(req.params.id, { status: 'approved' });
+        res.json({ message: "Approved!" });
+    } catch (err) { 
+        res.status(500).json({ message: "Failed" }); 
     }
 };

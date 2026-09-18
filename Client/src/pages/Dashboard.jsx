@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion'; 
 import { useAuth } from '../context/AuthContext'; 
 import { useNavigate } from 'react-router-dom';
+import API from '../api';
 import UploadModal from '../components/UploadModal';
 import Toast from '../components/Toast';
 import DownloadAction from '../components/DownloadAction';
@@ -19,11 +20,9 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  // New states for Preview
   const [selectedFile, setSelectedFile] = useState(null);
 
-  const BACKEND_URL = "http://localhost:5000";
-  const token = localStorage.getItem('rootle_token');
+  const userId = user?._id || user?.id;
 
   const showToast = (msg, type = 'success') => {
     setToast({ show: true, message: msg, type });
@@ -47,50 +46,46 @@ const Dashboard = () => {
   };
 
   const fetchData = async () => {
-    if (!user || !user.id) return;
+    if (!user || !userId) return;
     setLoading(true);
     try {
-      let url;
+      let endpoint = '/resources';
+      const params = {};
+
       if (viewMode === 'My Requests') {
-          url = new URL(`${BACKEND_URL}/api/resources/requests`);
+        endpoint = '/resources/requests';
       } else {
-          url = new URL(`${BACKEND_URL}/api/resources`);
-          if (searchQuery) url.searchParams.append('search', searchQuery);
-          if (activeCategory !== 'All') url.searchParams.append('category', activeCategory);
-          
-          if (viewMode === 'My Library') {
-            url.searchParams.append('mine', 'true');
-            url.searchParams.append('status', 'all');
-          } 
-          else if (viewMode === 'Department Feed') {
-            const deptId = user?.departmentId || user?.department_id;
-            if (deptId && deptId !== 'undefined') {
-              url.searchParams.append('departmentId', deptId);
-              url.searchParams.append('status', 'approved');
-            }
-          } 
-          else if (viewMode === 'Trending Research') {
-            url.searchParams.append('trending', 'true');
-            url.searchParams.append('status', 'approved');
+        if (searchQuery) params.search = searchQuery;
+        if (activeCategory !== 'All') params.category = activeCategory;
+        
+        if (viewMode === 'My Library') {
+          params.mine = 'true';
+          params.status = 'all';
+        } 
+        else if (viewMode === 'Department Feed') {
+          const deptId = user?.departmentId || user?.department_id;
+          if (deptId && deptId !== 'undefined') {
+            params.departmentId = deptId;
+            params.status = 'approved';
           }
-          else if (viewMode === 'World View') {
-             url.searchParams.append('status', 'approved');
-          }
+        } 
+        else if (viewMode === 'Trending Research') {
+          params.trending = 'true';
+          params.status = 'approved';
+        }
+        else if (viewMode === 'World View') {
+           params.status = 'approved';
+        }
       }
 
-      const response = await fetch(url.toString(), {
-        headers: { 'x-auth-token': token }
-      });
+      const response = await API.get(endpoint, { params });
+      const data = response.data;
       
-      const data = await response.json();
-      
-      if (response.ok) {
-          if (viewMode === 'My Requests') {
-              const myRequests = Array.isArray(data) ? data.filter(req => req.requester_id === user?.id) : [];
-              setItems(myRequests);
-          } else {
-              setItems(Array.isArray(data) ? data : []);
-          }
+      if (viewMode === 'My Requests') {
+          const myRequests = Array.isArray(data) ? data.filter(req => (req.requester_id || req.requester || req.requesterId) === userId) : [];
+          setItems(myRequests);
+      } else {
+          setItems(Array.isArray(data) ? data : []);
       }
     } catch (err) {
       console.error("Failed to fetch data:", err);
@@ -109,15 +104,12 @@ const Dashboard = () => {
     if (!fileUrl) return showToast("File path missing", "error");
     
     try {
-        await fetch(`${BACKEND_URL}/api/resources/download/${resId}`, {
-            method: 'POST',
-            headers: { 'x-auth-token': token }
-        });
+        await API.post(`/resources/download/${resId}`);
     } catch (err) { console.error("Stat update failed"); }
 
     try {
       const cleanPath = fileUrl.replace(/\\/g, '/');
-      const response = await fetch(`${BACKEND_URL}/${cleanPath}`);
+      const response = await fetch(`http://localhost:5000/${cleanPath}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -129,7 +121,7 @@ const Dashboard = () => {
       link.parentNode.removeChild(link);
       window.URL.revokeObjectURL(url);
       showToast("ROOTLE SECURED", "success");
-      fetchData(); // Refresh to see download count update
+      fetchData(); 
     } catch (error) {
       showToast("DOWNLOAD FAILED", "error");
     }
@@ -137,17 +129,10 @@ const Dashboard = () => {
 
   const handleRate = async (resourceId, rating) => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/resources/rate`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-auth-token': token 
-        },
-        body: JSON.stringify({ resourceId, rating })
-      });
-      if (response.ok) {
+      const response = await API.post('/resources/rate', { resourceId, rating });
+      if (response.status === 200 || response.status === 201) {
         showToast("RATING LOGGED", "success");
-        fetchData(); // Refresh averages
+        fetchData(); 
       }
     } catch (err) {
       showToast("RATING FAILED", "error");
@@ -158,12 +143,9 @@ const Dashboard = () => {
     e.stopPropagation();
     if (!window.confirm("Are you sure you want to pull this from the vault?")) return;
     try {
-        const response = await fetch(`${BACKEND_URL}/api/resources/${resId}`, {
-            method: 'DELETE',
-            headers: { 'x-auth-token': token }
-        });
-        if (response.ok) {
-            setItems(prev => prev.filter(item => item.id !== resId));
+        const response = await API.delete(`/resources/${resId}`);
+        if (response.status === 200 || response.status === 201) {
+            setItems(prev => prev.filter(item => (item._id || item.id) !== resId));
             showToast("REMOVAL REQUEST SENT", "success"); 
         }
     } catch (err) {
@@ -173,7 +155,6 @@ const Dashboard = () => {
 
   return (
     <div className="flex min-h-screen bg-[#F5F5DC] relative overflow-hidden">
-      {/* BACKGROUND AESTHETIC LAYER */}
       <div 
         className="fixed inset-0 pointer-events-none opacity-[0.03]"
         style={{ 
@@ -206,7 +187,14 @@ const Dashboard = () => {
           >
             <span className="text-lg">🤝</span> Request Hub
           </motion.div>
-          <button onClick={() => { logout(); navigate('/login'); }} className="mt-4 text-[10px] font-black uppercase text-red-400 hover:text-red-200 transition-colors text-left">
+          <motion.div 
+            whileHover={{ x: 10, color: "#bf953f" }}
+            onClick={() => navigate('/leaderboard')}
+            className="cursor-pointer font-display uppercase text-[11px] font-black tracking-[0.15em] flex items-center gap-4 transition-colors text-gold-leaf"
+          >
+            <span className="text-lg">🏆</span> Leader Hub
+          </motion.div>
+          <button onClick={() => { logout(); navigate('/login'); }} className="mt-4 text-[10px] font-black uppercase text-red-400 hover:text-red-200 transition-colors text-left block">
             Exit System
           </button>
         </nav>
@@ -223,8 +211,8 @@ const Dashboard = () => {
                 </div>
              </div>
              <div className="bg-[#bf953f] border-2 border-gold-leaf p-3 rounded-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,0.3)]">
-               <p className="text-[8px] font-black uppercase tracking-[0.2em] text-timber-900/70 mb-1">Active Faculty</p>
-               <p className="text-[12px] font-display font-black uppercase text-timber-900 leading-tight">{displayDept}</p>
+                <p className="text-[8px] font-black uppercase tracking-[0.2em] text-timber-900/70 mb-1">Active Faculty</p>
+                <p className="text-[12px] font-display font-black uppercase text-timber-900 leading-tight">{displayDept}</p>
              </div>
           </div>
         </div>
@@ -264,43 +252,52 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {items.length > 0 ? (
               items.map((item) => {
+                const itemId = item._id || item.id;
                 if (viewMode === 'My Requests') {
+                    const isFulfilled = item.is_fulfilled ?? item.isFulfilled;
+                    const createdAt = item.created_at || item.createdAt;
                     return (
-                        <div key={item.id} className="bg-white border-4 border-timber-800 p-6 rounded-[30px] shadow-[10px_10px_0px_0px_rgba(191,149,63,1)]">
+                        <div key={itemId} className="bg-white border-4 border-timber-800 p-6 rounded-[30px] shadow-[10px_10px_0px_0px_rgba(191,149,63,1)]">
                             <div className="flex justify-between items-start mb-4">
                                 <span className="text-2xl">🤝</span>
-                                <span className={`text-[8px] font-black px-3 py-1 rounded-full uppercase ${item.is_fulfilled ? 'bg-green-100 text-green-800 border border-green-800' : 'bg-timber-800 text-gold-leaf'}`}>
-                                    {item.is_fulfilled ? "FULFILLED" : "PENDING"}
+                                <span className={`text-[8px] font-black px-3 py-1 rounded-full uppercase ${isFulfilled ? 'bg-green-100 text-green-800 border border-green-800' : 'bg-timber-800 text-gold-leaf'}`}>
+                                    {isFulfilled ? "FULFILLED" : "PENDING"}
                                 </span>
                             </div>
                             <h3 className="font-display font-black text-timber-800 text-xl tracking-tight leading-tight">{item.title}</h3>
                             <p className="text-timber-500 text-[11px] mt-2 italic">"{item.description}"</p>
-                            <p className="text-timber-400 text-[9px] font-bold uppercase mt-4 tracking-tighter">Posted: {new Date(item.created_at).toLocaleDateString()}</p>
+                            <p className="text-timber-400 text-[9px] font-bold uppercase mt-4 tracking-tighter">Posted: {createdAt ? new Date(createdAt).toLocaleDateString() : 'N/A'}</p>
                         </div>
                     );
                 }
 
-                const fileInfo = getFileIcon(item.file_url);
-                const isOwner = item.uploader_id === user?.id;
+                const fileUrl = item.file_url || item.fileUrl;
+                const fileInfo = getFileIcon(fileUrl);
+                const uploaderId = item.uploader_id || item.uploader || item.uploaderId;
+                const isOwner = uploaderId === userId;
                 const isPending = item.status === 'pending';
+                const downloadCount = item.download_count ?? item.downloadCount ?? 0;
+                const avgRating = item.average_rating ?? item.averageRating ?? 0;
+                const createdAt = item.created_at || item.createdAt;
+                const uploaderName = item.uploader_name || item.uploaderName || 'Scholar';
 
                 return (
                   <motion.div 
-                    key={item.id}
+                    key={itemId}
                     whileHover={{ y: -10, rotate: -1 }}
                     onClick={() => !isPending && setSelectedFile(item)}
                     className={`bg-white border-4 border-timber-800 p-6 rounded-[30px] shadow-[12px_12px_0px_0px_rgba(62,39,35,1)] group relative transition-all ${isPending ? 'opacity-70 grayscale cursor-not-allowed' : 'cursor-pointer hover:shadow-[4px_4px_0px_0px_rgba(62,39,35,1)]'}`}
                   >
                     {!isPending && (
                       <DownloadAction 
-                        count={item.download_count || 0}
-                        onClick={() => handleDownload(item.id, item.file_url)} 
+                        count={downloadCount}
+                        onClick={() => handleDownload(itemId, fileUrl)} 
                       />
                     )}
 
                     {isOwner && (
                       <button 
-                        onClick={(e) => handleDeleteResource(e, item.id)}
+                        onClick={(e) => handleDeleteResource(e, itemId)}
                         className="absolute -top-2 -right-2 w-10 h-10 bg-red-500 text-white rounded-full border-4 border-timber-800 flex items-center justify-center font-black opacity-0 group-hover:opacity-100 transition-opacity z-30 shadow-lg"
                       >
                         ×
@@ -320,17 +317,16 @@ const Dashboard = () => {
 
                     <h3 className="font-display font-black text-timber-800 text-xl tracking-tight leading-tight pr-12 group-hover:text-gold-leaf transition-colors">{item.title}</h3>
                     
-                    {/* Rating System Integration */}
                     {!isPending && (
                       <RatingSystem 
-                        currentRating={item.average_rating || 0} 
-                        onRate={(val) => handleRate(item.id, val)} 
+                        currentRating={avgRating} 
+                        onRate={(val) => handleRate(itemId, val)} 
                       />
                     )}
 
-                    <p className="text-timber-500 text-[10px] font-bold uppercase mt-3 flex items-center gap-2">
+                    <p className="text-timber-500 text-[10px] font-black uppercase mt-3 flex items-center gap-2">
                       <span className="w-1.5 h-1.5 rounded-full bg-gold-leaf"></span>
-                      {new Date(item.created_at).toLocaleDateString()} • {item.uploader_name || 'Scholar'}
+                      {createdAt ? new Date(createdAt).toLocaleDateString() : 'N/A'} • {uploaderName}
                     </p>
                   </motion.div>
                 );
@@ -350,13 +346,17 @@ const Dashboard = () => {
       
       <AnimatePresence>
         {isModalOpen && (
-          <UploadModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onUploadSuccess={() => { showToast("UPLOAD SYNCED TO THE GATE", "success"); fetchData(); }} />
+          <UploadModal 
+            isOpen={isModalOpen} 
+            onClose={() => setIsModalOpen(false)} 
+            onUploadSuccess={() => { showToast("UPLOAD SYNCED TO THE GATE", "success"); fetchData(); }} 
+          />
         )}
         {selectedFile && (
           <FileViewerModal 
             isOpen={!!selectedFile} 
             onClose={() => setSelectedFile(null)} 
-            fileUrl={selectedFile.file_url} 
+            fileUrl={selectedFile.file_url || selectedFile.fileUrl} 
             title={selectedFile.title} 
           />
         )}

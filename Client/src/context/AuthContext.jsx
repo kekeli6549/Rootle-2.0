@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import scribbleBg from '../assets/scribble-bg.png';
 
 const AuthContext = createContext();
 
@@ -22,11 +24,10 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = (userData, token) => {
-    // HARMONIZATION: Ensure UI keys match backend response
     const formattedUser = {
         ...userData,
-        department: userData.departmentName, // Map departmentName to department
-        displayId: userData.staffId          // Map staffId to a generic displayId
+        department: userData.departmentName, 
+        displayId: userData.idNumber         
     };
     setUser(formattedUser);
     localStorage.setItem('rootle_token', token);
@@ -42,8 +43,14 @@ export const AuthProvider = ({ children }) => {
   return (
     <AuthContext.Provider value={{ user, login, logout, loading, isAdmin: user?.role === 'admin', isLecturer: user?.role === 'lecturer' }}>
       {!loading ? children : (
-        <div className="min-h-screen bg-[#F5F5DC] flex items-center justify-center font-black text-timber-800">
-          ROOTLE IS INITIALIZING...
+        <div className="min-h-screen bg-[#3E2723] flex flex-col items-center justify-center p-6 text-center" style={{ backgroundImage: `url(${scribbleBg})`, backgroundBlendMode: 'overlay' }}>
+          <motion.div 
+            animate={{ rotate: 360 }} 
+            transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }} 
+            className="w-16 h-16 border-4 border-[#C5A059] border-t-transparent rounded-full mb-6"
+          />
+          <h2 className="font-display font-black text-2xl text-[#F5F5DC] uppercase tracking-tighter mb-1">Rootle.</h2>
+          <p className="font-black text-[#C5A059] uppercase text-[10px] tracking-[0.4em]">Initializing Vault Access...</p>
         </div>
       )}
     </AuthContext.Provider>

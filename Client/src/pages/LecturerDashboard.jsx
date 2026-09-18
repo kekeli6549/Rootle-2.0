@@ -23,7 +23,7 @@ const LecturerDashboard = () => {
   const BACKEND_URL = "http://localhost:5000";
 
   const fetchDashboardData = async () => {
-    if (!user || !user.id) return;
+    if (!user || (!user._id && !user.id)) return;
     
     setLoading(true);
     try {
@@ -77,13 +77,10 @@ const LecturerDashboard = () => {
       let method = '';
 
       if (activeTab === 'Deletion Inbox') {
-          // If rejecting deletion, we target the Request ID. If Purging, we target the Resource ID.
-          // The 'id' passed to this function will be different based on the button clicked.
           if (action === 'permanent') {
             endpoint = `${BACKEND_URL}/api/resources/admin/permanent/${id}`;
             method = 'DELETE';
           } else {
-             // action is 'reject'
              endpoint = `${BACKEND_URL}/api/resources/admin/reject-deletion/${id}`;
              method = 'DELETE';
           }
@@ -220,7 +217,7 @@ const LecturerDashboard = () => {
                 // --- 1. RENDER WISHLIST CARDS ---
                 if (activeTab === 'Community Wishlist') {
                   return (
-                    <div key={item.id} className="bg-white border-4 border-timber-800 p-8 rounded-[40px] flex justify-between items-center shadow-[15px_15px_0px_0px_#3E2723]">
+                    <div key={item._id || item.id} className="bg-white border-4 border-timber-800 p-8 rounded-[40px] flex justify-between items-center shadow-[15px_15px_0px_0px_#3E2723]">
                       <div>
                         <span className="text-[8px] bg-red-900 text-white px-2 py-1 rounded font-black uppercase mb-2 inline-block">Student Wish</span>
                         <h3 className="font-display font-black text-2xl text-timber-800 uppercase mb-1">{item.title}</h3>
@@ -228,7 +225,7 @@ const LecturerDashboard = () => {
                       </div>
                       <button onClick={() => { 
                           setUploadTitle(`RE: ${item.title}`); 
-                          setSelectedRequestId(item.id); 
+                          setSelectedRequestId(item._id || item.id); 
                           setIsModalOpen(true); 
                       }} className="px-6 py-3 bg-timber-800 text-gold-leaf font-black text-[10px] uppercase rounded-xl hover:scale-105 transition-all">Fulfill Request</button>
                     </div>
@@ -237,7 +234,7 @@ const LecturerDashboard = () => {
 
                 // --- 2. RENDER STANDARD RESOURCE CARDS ---
                 return (
-                    <div key={item.id || item.request_id} className="bg-white border-4 border-timber-800 p-8 rounded-[40px] flex justify-between items-center shadow-[15px_15px_0px_0px_#3E2723] group transition-all">
+                    <div key={item._id || item.id || item.request_id} className="bg-white border-4 border-timber-800 p-8 rounded-[40px] flex justify-between items-center shadow-[15px_15px_0px_0px_#3E2723] group transition-all">
                         <div className="flex gap-6 items-center">
                             <div className="w-16 h-16 bg-timber-100 rounded-2xl flex items-center justify-center text-3xl border-2 border-timber-800 group-hover:bg-gold-leaf transition-colors">
                             {item.category === 'Past Question' ? '📜' : '📄'}
@@ -256,8 +253,8 @@ const LecturerDashboard = () => {
                             
                             {activeTab === 'Review Queue' && (
                                 <>
-                                    <button onClick={() => handleAction(item.id, 'reject')} className="px-6 py-2 bg-red-100 text-red-900 border-2 border-red-900 font-black text-[9px] uppercase rounded-lg">Reject</button>
-                                    <button onClick={() => handleAction(item.id, 'approve')} className="px-6 py-2 bg-timber-800 text-gold-leaf font-black text-[9px] uppercase rounded-lg">Approve</button>
+                                    <button onClick={() => handleAction(item._id || item.id, 'reject')} className="px-6 py-2 bg-red-100 text-red-900 border-2 border-red-900 font-black text-[9px] uppercase rounded-lg">Reject</button>
+                                    <button onClick={() => handleAction(item._id || item.id, 'approve')} className="px-6 py-2 bg-timber-800 text-gold-leaf font-black text-[9px] uppercase rounded-lg">Approve</button>
                                 </>
                             )}
                             
@@ -270,7 +267,7 @@ const LecturerDashboard = () => {
                             )}
 
                             {(activeTab === 'Department Vault' || (activeTab === 'World Library' && isMyDepartment)) && (
-                                <button onClick={() => handleAction(item.id, 'permanent')} className="px-6 py-2 bg-red-900 text-white font-black text-[9px] uppercase rounded-lg hover:bg-black transition-all">
+                                <button onClick={() => handleAction(item._id || item.id, 'permanent')} className="px-6 py-2 bg-red-900 text-white font-black text-[9px] uppercase rounded-lg hover:bg-black transition-all">
                                     Delete
                                 </button>
                             )}

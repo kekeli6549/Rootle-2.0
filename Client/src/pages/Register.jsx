@@ -7,36 +7,55 @@ import scribbleBg from '../assets/scribble-bg.png';
 const Register = () => {
   const { login } = useAuth();
   const [role, setRole] = useState('student');
+  const [faculties, setFaculties] = useState([]);
   const [departments, setDepartments] = useState([]); 
+  const [selectedFaculty, setSelectedFaculty] = useState('');
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
     idNumber: '', 
     departmentId: '', 
-    password: '' 
+    password: '',
+    staffKey: ''
   });
   const navigate = useNavigate();
 
-  // FIX: Added more robust error handling for the 500 error
+  // Fetch Faculties on mount
   useEffect(() => {
+    const fetchFaculties = async () => {
+      try {
+        const res = await fetch('http://localhost:5000/api/auth/faculties');
+        const data = await res.json();
+        setFaculties(data);
+        if (data.length > 0) {
+          setSelectedFaculty(data[0]._id);
+        }
+      } catch (err) {
+        console.error("Failed to load faculties:", err);
+      }
+    };
+    fetchFaculties();
+  }, []);
+
+  // Fetch Departments whenever selectedFaculty changes
+  useEffect(() => {
+    if (!selectedFaculty) return;
     const fetchDepts = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/auth/departments');
-        if (!response.ok) throw new Error('Server error fetching departments');
-        
-        const data = await response.json();
+        const res = await fetch(`http://localhost:5000/api/auth/departments?facultyId=${selectedFaculty}`);
+        const data = await res.json();
         setDepartments(data);
-        
         if (data.length > 0) {
-          setFormData(prev => ({ ...prev, departmentId: data[0].id }));
+          setFormData(prev => ({ ...prev, departmentId: data[0]._id }));
+        } else {
+          setFormData(prev => ({ ...prev, departmentId: '' }));
         }
       } catch (err) {
         console.error("Failed to load departments:", err);
-        // Fallback: This prevents the app from breaking if the DB is empty
       }
     };
     fetchDepts();
-  }, []);
+  }, [selectedFaculty]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -45,9 +64,8 @@ const Register = () => {
   const handleRegister = async (e) => {
     e.preventDefault();
     
-    // Safety check: Don't submit if departmentId is missing
     if (!formData.departmentId) {
-      alert("Please wait for departments to load or contact Admin.");
+      alert("Please select a valid department.");
       return;
     }
 
@@ -87,7 +105,7 @@ const Register = () => {
         animate={{ y: 0, opacity: 1 }}
         className="w-full max-w-xl bg-[#FFFBF0]/90 backdrop-blur-sm border-4 border-[#3E2723] p-12 rounded-[50px] shadow-[20px_20px_0px_0px_rgba(62,39,35,1)]"
       >
-        <div className="mb-10 text-center">
+        <div className="mb-8 text-center">
           <h2 className="text-5xl font-black text-[#3E2723] tracking-tighter">Join the Root.</h2>
           <div className="flex justify-center mt-6 bg-[#D7CCC8] p-1 rounded-full w-fit mx-auto border-2 border-[#3E2723]">
             {['student', 'lecturer'].map((r) => (
@@ -108,28 +126,50 @@ const Register = () => {
         <form onSubmit={handleRegister} className="grid grid-cols-2 gap-6">
           <div className="col-span-2 md:col-span-1">
             <label className="text-[10px] font-black uppercase tracking-widest text-[#3E2723] block mb-2">Full Name</label>
-            <input required name="fullName" value={formData.fullName} onChange={handleChange} className="w-full bg-transparent border-2 border-[#3E2723] p-3 rounded-lg outline-none focus:bg-white/50 transition-all" placeholder="Chidi Obi" />
+            <input required name="fullName" value={formData.fullName} onChange={handleChange} className="w-full bg-transparent border-2 border-[#3E2723] p-3 rounded-lg outline-none focus:bg-white/50 transition-all font-bold" placeholder="Chidi Obi" />
           </div>
 
           <div className="col-span-2 md:col-span-1">
             <label className="text-[10px] font-black uppercase tracking-widest text-[#3E2723] block mb-2">Email</label>
-            <input required type="email" name="email" value={formData.email} onChange={handleChange} className="w-full bg-transparent border-2 border-[#3E2723] p-3 rounded-lg outline-none focus:bg-white/50 transition-all" placeholder="chidi@uni.edu" />
+            <input required type="email" name="email" value={formData.email} onChange={handleChange} className="w-full bg-transparent border-2 border-[#3E2723] p-3 rounded-lg outline-none focus:bg-white/50 transition-all font-bold" placeholder="chidi@uni.edu" />
           </div>
 
           <div className="col-span-2">
             <label className="text-[10px] font-black uppercase tracking-widest text-[#3E2723] block mb-2">
               {role === 'student' ? 'Student ID Number' : 'Staff Verification ID'}
             </label>
-            <input required name="idNumber" value={formData.idNumber} onChange={handleChange} className="w-full bg-transparent border-2 border-[#3E2723] p-3 rounded-lg outline-none focus:bg-white/50 transition-all" 
+            <input required name="idNumber" value={formData.idNumber} onChange={handleChange} className="w-full bg-transparent border-2 border-[#3E2723] p-3 rounded-lg outline-none focus:bg-white/50 transition-all font-bold" 
               placeholder={role === 'student' ? "e.g. 2024/12345" : "e.g. L-882-VERIFY"} />
           </div>
 
-          <div className="col-span-2">
-            <label className="text-[10px] font-black uppercase tracking-widest text-[#3E2723] block mb-2">Password</label>
-            <input required type="password" name="password" value={formData.password} onChange={handleChange} className="w-full bg-transparent border-2 border-[#3E2723] p-3 rounded-lg outline-none focus:bg-white/50 transition-all" placeholder="••••••••" />
-          </div>
+          {role === 'lecturer' && (
+            <div className="col-span-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-[#3E2723] block mb-2">Admin Passkey (Staff Key)</label>
+              <input required type="password" name="staffKey" value={formData.staffKey} onChange={handleChange} className="w-full bg-transparent border-2 border-[#3E2723] p-3 rounded-lg outline-none focus:bg-white/50 transition-all font-bold" placeholder="Enter staff passcode" />
+            </div>
+          )}
 
           <div className="col-span-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-[#3E2723] block mb-2">Password</label>
+            <input required type="password" name="password" value={formData.password} onChange={handleChange} className="w-full bg-transparent border-2 border-[#3E2723] p-3 rounded-lg outline-none focus:bg-white/50 transition-all font-bold" placeholder="••••••••" />
+          </div>
+
+          {/* Faculty Selector */}
+          <div className="col-span-2 md:col-span-1">
+            <label className="text-[10px] font-black uppercase tracking-widest text-[#3E2723] block mb-2">Faculty</label>
+            <select 
+              value={selectedFaculty} 
+              onChange={(e) => setSelectedFaculty(e.target.value)} 
+              className="w-full bg-transparent border-2 border-[#3E2723] p-3 rounded-lg appearance-none outline-none focus:bg-white/50 transition-all cursor-pointer font-bold"
+            >
+              {faculties.map(fac => (
+                <option key={fac._id} value={fac._id}>{fac.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Department Selector (Filtered by Faculty) */}
+          <div className="col-span-2 md:col-span-1">
             <label className="text-[10px] font-black uppercase tracking-widest text-[#3E2723] block mb-2">Department</label>
             <select 
               name="departmentId" 
@@ -139,10 +179,10 @@ const Register = () => {
             >
               {departments.length > 0 ? (
                 departments.map(dept => (
-                  <option key={dept.id} value={dept.id}>{dept.name}</option>
+                  <option key={dept._id} value={dept._id}>{dept.name}</option>
                 ))
               ) : (
-                <option value="">⚠️ Database Empty - Please Seed Departments</option>
+                <option value="">No departments available</option>
               )}
             </select>
           </div>
@@ -159,8 +199,8 @@ const Register = () => {
         
         <p className="text-center mt-6 text-sm font-bold text-[#5D4037]">
           Already a Rootler?{" "}
-          <Link to={role === 'lecturer' ? "/admin" : "/login"} className="text-[#A0522D] hover:underline font-black">
-            {role === 'lecturer' ? "Lecturer Log In" : "Log In"}
+          <Link to="/login" className="text-[#A0522D] hover:underline font-black">
+            Log In
           </Link>
         </p>
       </motion.div>
