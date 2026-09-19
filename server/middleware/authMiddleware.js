@@ -18,11 +18,21 @@ const protect = async (req, res, next) => {
 };
 
 const isAdmin = (req, res, next) => {
-    if (req.user && (req.user.role === 'admin' || req.user.role === 'lecturer')) {
+    // Added 'superadmin' so higher-level users aren't locked out of admin routes
+    if (req.user && (req.user.role === 'admin' || req.user.role === 'lecturer' || req.user.role === 'superadmin')) {
         next();
     } else {
         res.status(403).json({ message: "Access denied. Admins/Lecturers only." });
     }
 };
 
-module.exports = { protect, isAdmin };
+// New strict middleware for Super Admin Gate operations
+const isSuperAdmin = (req, res, next) => {
+    if (req.user && req.user.role === 'superadmin') {
+        next();
+    } else {
+        res.status(403).json({ message: "Security clearance denied. Super Admins only." });
+    }
+};
+
+module.exports = { protect, isAdmin, isSuperAdmin };

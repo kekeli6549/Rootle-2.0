@@ -2,12 +2,10 @@
 const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/adminController');
-const { protect, isAdmin } = require('../middleware/authMiddleware');
+const { protect, isAdmin, isSuperAdmin } = require('../middleware/authMiddleware');
 const pool = require('../config/db');
 
-
-/// --- GET STAFF STATS ---
-// Used to show how many files are pending at a glance
+// --- GET STAFF STATS ---
 router.get('/stats', protect, isAdmin, async (req, res) => {
     try {
         const deptId = req.user.department_id;
@@ -29,7 +27,13 @@ router.get('/stats', protect, isAdmin, async (req, res) => {
     }
 });
 
-// FIX: Changed 'auth' to 'protect, isAdmin' to resolve the ReferenceError
-router.delete('/permanent-delete/:id', protect, isAdmin, adminController.permanentDelete);
+// --- STAFF KEY MANAGEMENT ROUTES ---
+// Updated to isSuperAdmin to prevent standard lecturers from generating keys
+router.post('/generate-staff-key', protect, isSuperAdmin, adminController.generateStaffKey);
+router.get('/staff-keys', protect, isSuperAdmin, adminController.getStaffKeys);
+
+// --- RESOURCE MANAGEMENT ---
+// Permanent deletion should also be strictly guarded
+router.delete('/permanent-delete/:id', protect, isSuperAdmin, adminController.permanentDelete);
 
 module.exports = router;

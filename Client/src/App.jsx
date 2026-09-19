@@ -10,16 +10,18 @@ import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import AdminLogin from './pages/AdminLogin';
+import SuperAdminLogin from './pages/SuperAdminLogin'; // ✅ NEW IMPORT
 import Dashboard from './pages/Dashboard';
 import LecturerDashboard from './pages/LecturerDashboard';
+import SuperAdminDashboard from './pages/SuperAdminDashboard'; // ✅ NEW IMPORT (Make sure this file exists!)
 import RequestHub from './pages/RequestHub';
-import Leaderboard from './pages/Leaderboard'; // ✅ NEW IMPORT
+import Leaderboard from './pages/Leaderboard'; 
 
 const ProtectedRoute = ({ children, allowedRole }) => {
   const { user, loading } = useAuth();
 
   if (loading) return (
-    <div className="min-h-screen bg-[#F5F5DC] flex items-center justify-center font-black animate-pulse">
+    <div className="min-h-screen bg-[#F5F5DC] flex items-center justify-center font-black animate-pulse text-[#3E2723] tracking-widest uppercase">
       ROOTLE IS LOADING...
     </div>
   );
@@ -27,9 +29,21 @@ const ProtectedRoute = ({ children, allowedRole }) => {
   if (!user) return <Navigate to="/login" />;
   
   const isStaff = user.role === 'admin' || user.role === 'lecturer';
+  const isSuperAdmin = user.role === 'superadmin';
 
-  if (allowedRole === 'staff' && !isStaff) {
+  // Strict Fence Guards
+  if (allowedRole === 'superadmin' && !isSuperAdmin) {
     return <Navigate to="/dashboard/student" />;
+  }
+
+  if (allowedRole === 'staff' && !isStaff && !isSuperAdmin) {
+    return <Navigate to="/dashboard/student" />;
+  }
+
+  // Prevent staff/superadmin from rendering the student dashboard accidentally
+  if (allowedRole === 'student') {
+    if (isSuperAdmin) return <Navigate to="/dashboard/superadmin" />;
+    if (isStaff) return <Navigate to="/dashboard/lecturer" />;
   }
 
   return children;
@@ -44,9 +58,12 @@ function App() {
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            <Route path="/admin" element={<AdminLogin />} />
             
-            {/* STUDENT DASHBOARD */}
+            {/* 🚪 PORTAL GATES */}
+            <Route path="/admin-login" element={<AdminLogin />} />
+            <Route path="/superadmin-login" element={<SuperAdminLogin />} />
+            
+            {/* 🎓 STUDENT DASHBOARD */}
             <Route 
               path="/dashboard/student" 
               element={
@@ -56,7 +73,7 @@ function App() {
               } 
             />
 
-            {/* REQUEST HUB */}
+            {/* 📝 REQUEST HUB */}
             <Route 
               path="/requests" 
               element={
@@ -66,7 +83,7 @@ function App() {
               } 
             />
 
-            {/* LEADER HUB / HALL OF FAME */}
+            {/* 🏆 LEADER HUB */}
             <Route 
               path="/leaderboard" 
               element={
@@ -76,7 +93,7 @@ function App() {
               } 
             />
             
-            {/* LECTURER DASHBOARD */}
+            {/* 👨🏾‍🏫 LECTURER DASHBOARD */}
             <Route 
               path="/dashboard/lecturer" 
               element={
@@ -86,6 +103,17 @@ function App() {
               } 
             />
 
+            {/* ⚡ SUPERADMIN DASHBOARD */}
+            <Route 
+              path="/dashboard/superadmin" 
+              element={
+                <ProtectedRoute allowedRole="superadmin">
+                  <SuperAdminDashboard />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* CATCH ALL */}
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </Router>

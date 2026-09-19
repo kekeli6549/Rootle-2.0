@@ -41,7 +41,15 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, isAdmin: user?.role === 'admin', isLecturer: user?.role === 'lecturer' }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      login, 
+      logout, 
+      loading, 
+      isAdmin: user?.role === 'admin', 
+      isLecturer: user?.role === 'lecturer',
+      isSuperAdmin: user?.role === 'superadmin' // ✅ Added this for quick checks across the app
+    }}>
       {!loading ? children : (
         <div className="min-h-screen bg-[#3E2723] flex flex-col items-center justify-center p-6 text-center" style={{ backgroundImage: `url(${scribbleBg})`, backgroundBlendMode: 'overlay' }}>
           <motion.div 

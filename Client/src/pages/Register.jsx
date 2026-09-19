@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom'; 
 import { useAuth } from '../context/AuthContext'; 
+import API from '../api';
 import scribbleBg from '../assets/scribble-bg.png';
 
 const Register = () => {
@@ -10,6 +11,8 @@ const Register = () => {
   const [faculties, setFaculties] = useState([]);
   const [departments, setDepartments] = useState([]); 
   const [selectedFaculty, setSelectedFaculty] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(null);
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -20,15 +23,28 @@ const Register = () => {
   });
   const navigate = useNavigate();
 
-  // Fetch Faculties on mount
+  // Trigger 120s visual countdown as soon as they enter a staff key
+  useEffect(() => {
+    if (formData.staffKey && timeLeft === null) {
+      setTimeLeft(120);
+    }
+  }, [formData.staffKey]);
+
+  useEffect(() => {
+    if (timeLeft === null || timeLeft <= 0) return;
+    const timer = setInterval(() => {
+      setTimeLeft(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft]);
+
   useEffect(() => {
     const fetchFaculties = async () => {
       try {
-        const res = await fetch('http://localhost:5000/api/auth/faculties');
-        const data = await res.json();
-        setFaculties(data);
-        if (data.length > 0) {
-          setSelectedFaculty(data[0]._id);
+        const res = await API.get('/auth/faculties');
+        setFaculties(res.data);
+        if (res.data.length > 0) {
+          setSelectedFaculty(res.data[0]._id);
         }
       } catch (err) {
         console.error("Failed to load faculties:", err);
@@ -37,16 +53,14 @@ const Register = () => {
     fetchFaculties();
   }, []);
 
-  // Fetch Departments whenever selectedFaculty changes
   useEffect(() => {
     if (!selectedFaculty) return;
     const fetchDepts = async () => {
       try {
-        const res = await fetch(`http://localhost:5000/api/auth/departments?facultyId=${selectedFaculty}`);
-        const data = await res.json();
-        setDepartments(data);
-        if (data.length > 0) {
-          setFormData(prev => ({ ...prev, departmentId: data[0]._id }));
+        const res = await API.get(`/auth/departments?facultyId=${selectedFaculty}`);
+        setDepartments(res.data);
+        if (res.data.length > 0) {
+          setFormData(prev => ({ ...prev, departmentId: res.data[0]._id }));
         } else {
           setFormData(prev => ({ ...prev, departmentId: '' }));
         }
@@ -69,28 +83,23 @@ const Register = () => {
       return;
     }
 
+    setLoading(true);
     try {
-      const response = await fetch('http://localhost:5000/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, role })
-      });
+      const response = await API.post('/auth/register', { ...formData, role });
+      const data = response.data;
 
-      const data = await response.json();
-
-      if (response.ok) {
-        login(data.user, data.token);
-        if (data.user.role === 'lecturer' || data.user.role === 'admin') {
-          navigate('/dashboard/lecturer');
-        } else {
-          navigate('/dashboard/student');
-        }
+      login(data.user, data.token);
+      if (data.user.role === 'lecturer' || data.user.role === 'admin') {
+        navigate('/dashboard/lecturer');
       } else {
-        alert(data.message || "Registration failed");
+        navigate('/dashboard/student');
       }
+      
     } catch (err) {
       console.error("Register Error:", err);
-      alert("Check your connection to the server. Is the backend running?");
+      alert(err.response?.data?.message || "Registration failed. Check your connection.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -144,8 +153,15 @@ const Register = () => {
 
           {role === 'lecturer' && (
             <div className="col-span-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-[#3E2723] block mb-2">Admin Passkey (Staff Key)</label>
-              <input required type="password" name="staffKey" value={formData.staffKey} onChange={handleChange} className="w-full bg-transparent border-2 border-[#3E2723] p-3 rounded-lg outline-none focus:bg-white/50 transition-all font-bold" placeholder="Enter staff passcode" />
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-[#8B0000]">Admin Passkey (Staff Key)</label>
+                {timeLeft !== null && (
+                  <span className={`text-[9px] font-mono font-black ${timeLeft <= 20 ? 'text-red-600 animate-pulse' : 'text-timber-600'}`}>
+                    ⏱ Expires in: {Math.floor(timeLeft / 60)}:{('0' + (timeLeft % 60)).slice(-2)}
+                  </span>
+                )}
+              </div>
+              <input required type="password" name="staffKey" value={formData.staffKey} onChange={handleChange} className="w-full bg-transparent border-2 border-[#3E2723] p-3 rounded-lg outline-none focus:bg-white/50 transition-all font-bold font-mono" placeholder="Enter staff passcode" />
             </div>
           )}
 
@@ -154,7 +170,6 @@ const Register = () => {
             <input required type="password" name="password" value={formData.password} onChange={handleChange} className="w-full bg-transparent border-2 border-[#3E2723] p-3 rounded-lg outline-none focus:bg-white/50 transition-all font-bold" placeholder="••••••••" />
           </div>
 
-          {/* Faculty Selector */}
           <div className="col-span-2 md:col-span-1">
             <label className="text-[10px] font-black uppercase tracking-widest text-[#3E2723] block mb-2">Faculty</label>
             <select 
@@ -168,7 +183,6 @@ const Register = () => {
             </select>
           </div>
 
-          {/* Department Selector (Filtered by Faculty) */}
           <div className="col-span-2 md:col-span-1">
             <label className="text-[10px] font-black uppercase tracking-widest text-[#3E2723] block mb-2">Department</label>
             <select 
@@ -189,11 +203,12 @@ const Register = () => {
 
           <motion.button 
             type="submit" 
+            disabled={loading || timeLeft === 0}
             whileHover={{ scale: 1.02, backgroundColor: "#3E2723", color: "#F5F5DC" }} 
             whileTap={{ scale: 0.98 }}
-            className="col-span-2 py-5 rounded-xl font-black text-xl shadow-[8px_8px_0px_0px_rgba(160,82,45,1)] transition-all mt-4 uppercase tracking-tight border-4 border-[#3E2723] text-[#3E2723]"
+            className="col-span-2 py-5 rounded-xl font-black text-xl shadow-[8px_8px_0px_0px_rgba(160,82,45,1)] transition-all mt-4 uppercase tracking-tight border-4 border-[#3E2723] text-[#3E2723] disabled:opacity-50"
           >
-            Create My Account
+            {loading ? 'CREATING ACCOUNT...' : timeLeft === 0 ? 'KEY EXPIRED' : 'Create My Account'}
           </motion.button>
         </form>
         

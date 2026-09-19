@@ -1,13 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import API from '../api';
 import scribbleBg from '../assets/scribble-bg.png';
 
 const AdminLogin = () => {
   const [formData, setFormData] = useState({ email: '', password: '', staffKey: '' });
+  const [loading, setLoading] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(null);
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  // Trigger 120s visual countdown as soon as they start typing the key
+  useEffect(() => {
+    if (formData.staffKey && timeLeft === null) {
+      setTimeLeft(120);
+    }
+  }, [formData.staffKey]);
+
+  useEffect(() => {
+    if (timeLeft === null || timeLeft <= 0) return;
+    const timer = setInterval(() => {
+      setTimeLeft(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -15,38 +33,31 @@ const AdminLogin = () => {
 
   const handleAdminLogin = async (e) => {
     e.preventDefault();
-
-    // STAFF KEY CHECK (Front-Gate Security)
-    // Use the key from your .env file
-    // You can set this in your .env as VITE_STAFF_KEY
-    const VALID_STAFF_KEY = "ROOT-2026-X"; 
-    if (formData.staffKey !== VALID_STAFF_KEY) {
-      return alert("Invalid Staff Verification Key. This incident will be reported!");
-    }
+    setLoading(true);
 
     try {
-      const response = await fetch('http://localhost:5000/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: formData.email, password: formData.password })
+      const response = await API.post('/auth/login', { 
+        email: formData.email, 
+        password: formData.password,
+        staffKey: formData.staffKey 
       });
 
-      const data = await response.json();
+      const data = response.data;
 
-      if (response.ok) {
-        // AUTHENTICATION CLEARANCE CHECK
-        if (data.user.role === 'lecturer' || data.user.role === 'admin') {
-          login(data.user, data.token);
-          navigate('/dashboard/lecturer'); 
-        } else {
-          alert("Access Denied: You are a Student. Use the Student Gate!");
-        }
+      if (data.user.role === 'superadmin') {
+        login(data.user, data.token);
+        navigate('/dashboard/superadmin');
+      } else if (data.user.role === 'lecturer' || data.user.role === 'admin') {
+        login(data.user, data.token);
+        navigate('/dashboard/lecturer'); 
       } else {
-        alert(data.message || "Authentication failed. Check your Staff credentials.");
+        alert("Access Denied: You are a Student. Use the Student Gate!");
       }
     } catch (err) {
       console.error("Admin Login Error:", err);
-      alert("Command Center is offline. Check the backend logs.");
+      alert(err.response?.data?.message || "Command Center is offline. Check the backend logs.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -79,17 +90,28 @@ const AdminLogin = () => {
           </div>
 
           <div>
-            <label className="text-[9px] font-black uppercase text-[#8B0000] ml-1">Verification Key</label>
+            <div className="flex justify-between items-center ml-1 mb-1">
+              <label className="text-[9px] font-black uppercase text-[#8B0000]">Verification Key</label>
+              {timeLeft !== null && (
+                <span className={`text-[9px] font-mono font-black ${timeLeft <= 20 ? 'text-red-600 animate-pulse' : 'text-timber-600'}`}>
+                  ⏱ Expires in: {Math.floor(timeLeft / 60)}:{('0' + (timeLeft % 60)).slice(-2)}
+                </span>
+              )}
+            </div>
             <input required type="password" name="staffKey" onChange={handleChange} className="w-full bg-[#FFEBEE] border-2 border-[#8B0000] p-3 rounded-lg font-mono text-[#8B0000] placeholder:text-red-200 outline-none" placeholder="INPUT-VERIFICATION-KEY" />
           </div>
 
-          <button type="submit" className="w-full bg-[#8B0000] text-[#F5F5DC] py-4 rounded-xl font-black text-lg hover:bg-[#3E2723] hover:scale-[1.02] transition-all duration-300 mt-6 shadow-xl border-2 border-[#8B0000] hover:border-[#D7CCC8]">
-            AUTHENTICATE
+          <button 
+            type="submit" 
+            disabled={loading || timeLeft === 0}
+            className="w-full bg-[#8B0000] text-[#F5F5DC] py-4 rounded-xl font-black text-lg hover:bg-[#3E2723] hover:scale-[1.02] transition-all duration-300 mt-6 shadow-xl border-2 border-[#8B0000] hover:border-[#D7CCC8] disabled:opacity-50"
+          >
+            {loading ? 'AUTHENTICATING...' : timeLeft === 0 ? 'KEY EXPIRED' : 'AUTHENTICATE'}
           </button>
         </form>
 
         <div className="mt-8 text-center border-t border-[#D7CCC8] pt-4">
-          <Link to="/" className="text-[10px] font-black uppercase tracking-widest text-[#A1887F] hover:text-[#3E2723]">← Return to Public Site</Link>
+          <Link to="/login" className="text-[10px] font-black uppercase tracking-widest text-[#A1887F] hover:text-[#3E2723]">← Return to Public Gate</Link>
         </div>
       </motion.div>
     </div>
