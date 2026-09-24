@@ -21,7 +21,7 @@ const RatingSystem = ({ currentRating, onRate }) => {
                 e.stopPropagation();
                 onRate(num);
               }}
-              className={`text-[10px] font-black w-6 h-6 flex items-center justify-center rounded-lg transition-all transform active:scale-90 ${
+              className={`text-[10px] font-black w-8 h-8 md:w-6 md:h-6 flex items-center justify-center rounded-lg transition-all transform active:scale-90 ${
                 Math.round(currentRating) >= num 
                   ? 'bg-gold-leaf text-timber-900 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)]' 
                   : 'bg-white text-timber-400 hover:bg-gold-leaf/20 border border-timber-200'

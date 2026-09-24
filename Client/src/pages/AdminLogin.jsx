@@ -12,7 +12,6 @@ const AdminLogin = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  // Trigger 120s visual countdown as soon as they start typing the key
   useEffect(() => {
     if (formData.staffKey && timeLeft === null) {
       setTimeLeft(120);
@@ -62,56 +61,56 @@ const AdminLogin = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6"
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6"
       style={{ backgroundColor: '#3E2723', backgroundImage: `url(${scribbleBg})`, backgroundBlendMode: 'overlay', backgroundSize: '400px' }}>
       
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }} 
         animate={{ scale: 1, opacity: 1 }}
-        className="w-full max-w-md bg-[#F5F5DC] border-4 border-[#D7CCC8] p-10 rounded-[30px] shadow-[0px_0px_40px_rgba(0,0,0,0.5)] relative overflow-hidden"
+        className="w-full max-w-md bg-[#F5F5DC] border-2 sm:border-4 border-[#D7CCC8] p-6 sm:p-10 rounded-[20px] sm:rounded-[30px] shadow-[0px_0px_30px_rgba(0,0,0,0.5)] sm:shadow-[0px_0px_40px_rgba(0,0,0,0.5)] relative overflow-hidden"
       >
         <div className="absolute top-0 left-0 w-full h-2 bg-[#8B0000]"></div>
 
-        <div className="text-center mb-8">
-          <div className="inline-block bg-[#3E2723] text-[#F5F5DC] px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.3em] mb-4">Restricted Access</div>
-          <h2 className="text-3xl font-black text-[#3E2723] uppercase tracking-tighter">Staff Portal</h2>
-          <p className="text-[#5D4037] text-xs font-bold uppercase tracking-widest mt-2">Admins & Lecturers Only</p>
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="inline-block bg-[#3E2723] text-[#F5F5DC] px-3 sm:px-4 py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] mb-3 sm:mb-4">Restricted Access</div>
+          <h2 className="text-2xl sm:text-3xl font-black text-[#3E2723] uppercase tracking-tighter">Staff Portal</h2>
+          <p className="text-[#5D4037] text-[10px] sm:text-xs font-bold uppercase tracking-widest mt-1 sm:mt-2">Admins & Lecturers Only</p>
         </div>
 
-        <form onSubmit={handleAdminLogin} className="space-y-5">
+        <form onSubmit={handleAdminLogin} className="space-y-4 sm:space-y-5">
           <div>
-            <label className="text-[9px] font-black uppercase text-[#3E2723] ml-1">Official Email</label>
-            <input required type="email" name="email" onChange={handleChange} className="w-full bg-[#EFEBE9] border-2 border-[#3E2723] p-3 rounded-lg font-bold outline-none focus:bg-white transition-all" placeholder="lecturer@university.edu" />
+            <label className="text-[8px] sm:text-[9px] font-black uppercase text-[#3E2723] ml-1">Official Email</label>
+            <input required type="email" name="email" onChange={handleChange} className="w-full bg-[#EFEBE9] border-2 border-[#3E2723] p-2.5 sm:p-3 rounded-lg font-bold text-sm sm:text-base outline-none focus:bg-white transition-all" placeholder="lecturer@university.edu" />
           </div>
           
           <div>
-            <label className="text-[9px] font-black uppercase text-[#3E2723] ml-1">Password</label>
-            <input required type="password" name="password" onChange={handleChange} className="w-full bg-[#EFEBE9] border-2 border-[#3E2723] p-3 rounded-lg font-bold outline-none focus:bg-white" placeholder="••••••••••••" />
+            <label className="text-[8px] sm:text-[9px] font-black uppercase text-[#3E2723] ml-1">Password</label>
+            <input required type="password" name="password" onChange={handleChange} className="w-full bg-[#EFEBE9] border-2 border-[#3E2723] p-2.5 sm:p-3 rounded-lg font-bold text-sm sm:text-base outline-none focus:bg-white" placeholder="••••••••••••" />
           </div>
 
           <div>
             <div className="flex justify-between items-center ml-1 mb-1">
-              <label className="text-[9px] font-black uppercase text-[#8B0000]">Verification Key</label>
+              <label className="text-[8px] sm:text-[9px] font-black uppercase text-[#8B0000]">Verification Key</label>
               {timeLeft !== null && (
-                <span className={`text-[9px] font-mono font-black ${timeLeft <= 20 ? 'text-red-600 animate-pulse' : 'text-timber-600'}`}>
-                  ⏱ Expires in: {Math.floor(timeLeft / 60)}:{('0' + (timeLeft % 60)).slice(-2)}
+                <span className={`text-[8px] sm:text-[9px] font-mono font-black ${timeLeft <= 20 ? 'text-red-600 animate-pulse' : 'text-timber-600'}`}>
+                  ⏱ Expires: {Math.floor(timeLeft / 60)}:{('0' + (timeLeft % 60)).slice(-2)}
                 </span>
               )}
             </div>
-            <input required type="password" name="staffKey" onChange={handleChange} className="w-full bg-[#FFEBEE] border-2 border-[#8B0000] p-3 rounded-lg font-mono text-[#8B0000] placeholder:text-red-200 outline-none" placeholder="INPUT-VERIFICATION-KEY" />
+            <input required type="password" name="staffKey" onChange={handleChange} className="w-full bg-[#FFEBEE] border-2 border-[#8B0000] p-2.5 sm:p-3 rounded-lg font-mono text-xs sm:text-sm text-[#8B0000] placeholder:text-red-200 outline-none" placeholder="INPUT-VERIFICATION-KEY" />
           </div>
 
           <button 
             type="submit" 
             disabled={loading || timeLeft === 0}
-            className="w-full bg-[#8B0000] text-[#F5F5DC] py-4 rounded-xl font-black text-lg hover:bg-[#3E2723] hover:scale-[1.02] transition-all duration-300 mt-6 shadow-xl border-2 border-[#8B0000] hover:border-[#D7CCC8] disabled:opacity-50"
+            className="w-full bg-[#8B0000] text-[#F5F5DC] py-3 sm:py-4 rounded-xl font-black text-base sm:text-lg hover:bg-[#3E2723] hover:scale-[1.02] transition-all duration-300 mt-4 sm:mt-6 shadow-lg sm:shadow-xl border-2 border-[#8B0000] hover:border-[#D7CCC8] disabled:opacity-50"
           >
             {loading ? 'AUTHENTICATING...' : timeLeft === 0 ? 'KEY EXPIRED' : 'AUTHENTICATE'}
           </button>
         </form>
 
-        <div className="mt-8 text-center border-t border-[#D7CCC8] pt-4">
-          <Link to="/login" className="text-[10px] font-black uppercase tracking-widest text-[#A1887F] hover:text-[#3E2723]">← Return to Public Gate</Link>
+        <div className="mt-6 sm:mt-8 text-center border-t border-[#D7CCC8] pt-4">
+          <Link to="/login" className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-[#A1887F] hover:text-[#3E2723]">← Return to Public Gate</Link>
         </div>
       </motion.div>
     </div>
