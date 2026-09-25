@@ -59,7 +59,12 @@ exports.permanentDelete = async (req, res) => {
 
         const filePath = resource.file_url;
         if (filePath && fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
+            // ✅ Wrapped in try/catch to prevent server crashes if the file is locked or missing
+            try {
+                fs.unlinkSync(filePath);
+            } catch (fsErr) {
+                console.warn(`⚠️ Warning: Could not delete physical file at ${filePath}:`, fsErr.message);
+            }
         }
 
         await DeletionRequest.deleteMany({ resource_id: resourceId });

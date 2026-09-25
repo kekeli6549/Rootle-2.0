@@ -3,26 +3,32 @@ const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/adminController');
 const { protect, isAdmin, isSuperAdmin } = require('../middleware/authMiddleware');
-const pool = require('../config/db');
+
+// Import your Mongoose models instead of Postgres 'pool'
+// (Ensure you have a Resource model created in your models folder)
+// const Resource = require('../models/Resource'); 
 
 // --- GET STAFF STATS ---
 router.get('/stats', protect, isAdmin, async (req, res) => {
     try {
         const deptId = req.user.department_id;
-        const pendingCount = await pool.query(
-            'SELECT COUNT(*) FROM resources WHERE department_id = $1 AND status = $2',
-            [deptId, 'pending']
-        );
-        const totalFiles = await pool.query(
-            'SELECT COUNT(*) FROM resources WHERE department_id = $1 AND status = $2',
-            [deptId, 'approved']
-        );
+        
+        // NOTE: Uncomment these lines once your Resource Mongoose model is ready
+        /*
+        const pendingCount = await Resource.countDocuments({ department_id: deptId, status: 'pending' });
+        const totalFiles = await Resource.countDocuments({ department_id: deptId, status: 'approved' });
 
         res.json({
-            pending: pendingCount.rows[0].count,
-            total: totalFiles.rows[0].count
+            pending: pendingCount,
+            total: totalFiles
         });
+        */
+       
+        // Temporary placeholder response to prevent app crash until Resource model is built
+        res.json({ pending: 0, total: 0 });
+        
     } catch (err) {
+        console.error("Stats Error:", err);
         res.status(500).json({ message: "Failed to fetch stats" });
     }
 });
