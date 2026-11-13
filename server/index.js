@@ -12,7 +12,43 @@ require('dotenv').config();
 
 const app = express();
 
-connectDB();
+// Middleware
+app.use(helmet({ crossOriginResourcePolicy: false }));
+// Explicitly allow local frontend origins to prevent silent CORS blocks
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  credentials: true
+}));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan('dev'));
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: "Too many requests from this IP."
+});
+app.use('/api/', limiter);
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Routes
+const authRoutes = require('./routes/authRoutes');
+const resourceRoutes = require('./routes/resourceRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+
+app.use('/api/auth', authRoutes);
+app.use('/api/resources', resourceRoutes);
+app.use('/api/admin', adminRoutes);
+
+app.get('/', (req, res) => {
+  res.json({ message: "Rootle API is live, Chief!" });
+});
+
+// Global Error Handler
+app.use((err, req, res, next) => {
+  console.error('❌ Express Error:', err.message);
+  res.status(500).json({ error: "Server Error", details: err.message });
+});
 
 // --- AUTOMATIC IDEMPOTENT SEEDER ---
 const seedDatabase = async () => {
@@ -80,47 +116,28 @@ const seedDatabase = async () => {
     console.log('🛡️ Department Admin account verified/seeded.');
 
   } catch (err) {
-    console.error('Seeding background error:', err.message);
+    console.error('❌ Seeding background error:', err.message);
   }
 };
 
-mongoose.connection.once('open', () => {
-  seedDatabase();
-});
-
-// Middleware
-app.use(helmet({ crossOriginResourcePolicy: false }));
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(morgan('dev'));
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: "Too many requests from this IP."
-});
-app.use('/api/', limiter);
-
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// Routes
-const authRoutes = require('./routes/authRoutes');
-const resourceRoutes = require('./routes/resourceRoutes');
-const adminRoutes = require('./routes/adminRoutes');
-
-app.use('/api/auth', authRoutes);
-app.use('/api/resources', resourceRoutes);
-app.use('/api/admin', adminRoutes);
-
-app.get('/', (req, res) => {
-  res.json({ message: "Rootle API is live, Chief!" });
-});
-
-app.use((err, req, res, next) => {
-  console.error('❌ Error:', err.message);
-  res.status(500).json({ error: "Server Error", err: err.message });
-});
-
+// --- SERVER INITIALIZATION ---
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server on http://localhost:${PORT}`));
+
+const startServer = async () => {
+  try {
+    await connectDB(); // Wait for DB to connect before opening ports
+    
+    // Run seeder only after successful DB connection
+    seedDatabase(); 
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Rootle Backend listening actively on http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error('🚨 FATAL: Failed to connect to Database. Server shutting down.');
+    console.error(error);
+    process.exit(1); // Kill the process if DB fails so you aren't left guessing
+  }
+};
+
+startServer();
