@@ -47,8 +47,17 @@ Both projects were deployed as separate apps from the same repo, so set:
 `Client/vercel.json` adds the SPA fallback so `/login`, `/register`, `/dashboard/...` work on refresh.
 `server/vercel.json` routes all requests to the exported Express app (`@vercel/node`).
 
-## 4. Known serverless limitation: file uploads
+## 4. File uploads now use MongoDB GridFS
 
-Vercel serverless functions have a read-only filesystem (except `/tmp`), a 4.5 MB request body limit, and no guarantee that `/tmp` survives between invocations. Uploads are written to `/tmp` so the API no longer crashes, but files may disappear and large uploads will fail.
+Uploaded bytes are stored in MongoDB (bucket `rootle_files`), not on Vercel's read-only filesystem. `Resource.file_url` now looks like `/api/resources/file/<id>`, served by `GET /api/resources/file/:id` (`server/controllers/resourceController.js`). Multer uses memory storage (`server/middleware/upload.js`), and the frontend resolves all file URLs through `resolveFileUrl()` in `Client/src/config.js`.
 
-For production-grade storage, move uploads to Cloudinary / S3 / MongoDB GridFS and store the resulting public URL in `Resource.file_url`. The rest of the app already treats `file_url` as a relative path under the backend origin, so that change is isolated to `server/middleware/upload.js` and `server/controllers/resourceController.js`.
+If you have existing files in `server/uploads`, run the one-off migration **locally** (where those files exist):
+
+```bash
+cd server
+npm run migrate:gridfs
+```
+
+It uploads each file to GridFS and rewrites the matching `Resource.file_url`. It leaves the original files in place as a backup; delete them only after you verify previews/downloads.
+
+Remaining platform limit: Vercel Hobby rejects request bodies above ~4.5 MB before the function runs. GridFS fixes persistence, not that gateway limit. For larger files, upgrade Vercel or switch to direct-to-storage uploads (Cloudinary/S3 signed uploads).

@@ -1,14 +1,15 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BACKEND_URL } from '../config';
+import { resolveFileUrl } from '../config';
 
-const FileViewerModal = ({ isOpen, onClose, fileUrl, title }) => {
+const FileViewerModal = ({ isOpen, onClose, fileUrl, title, mimeType }) => {
   if (!isOpen) return null;
 
-  const fullFileUrl = fileUrl?.startsWith('http') ? fileUrl : `${BACKEND_URL}/${fileUrl?.replace(/^\/+/, '').replace(/\\/g, '/')}`;
+  const fullFileUrl = resolveFileUrl(fileUrl);
   const fileExtension = fileUrl?.split('.').pop().toLowerCase();
-  const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(fileExtension);
-  const isPdf = fileExtension === 'pdf';
+  const type = (mimeType || '').toLowerCase();
+  const isImage = type.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(fileExtension);
+  const isPdf = type.includes('pdf') || fileExtension === 'pdf';
 
   return (
     <AnimatePresence>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { BACKEND_URL } from '../config';
+import { BACKEND_URL, resolveFileUrl } from '../config';
 import scribbleBg from '../assets/scribble-bg.png';
 
 const LecturerDashboard = () => {
@@ -156,7 +156,7 @@ const LecturerDashboard = () => {
 
   const handleViewFile = (url) => {
     if (!url) return alert("File path missing");
-    const fullUrl = `${BACKEND_URL}/${url.replace(/\\/g, '/')}`;
+    const fullUrl = resolveFileUrl(url);
     window.open(fullUrl, '_blank');
   };
 

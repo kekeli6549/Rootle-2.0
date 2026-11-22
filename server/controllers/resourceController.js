@@ -5,42 +5,57 @@ const User = require('../models/User');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
+const { getBucket, deleteFileByUrl, ObjectId } = require('../config/gridfs');
 
-// Stored file URLs are always relative ("uploads/file.pdf") so the browser can
-// build a valid URL. This maps them to the physical location on this runtime.
-const resolveFilePath = (fileUrl) => {
-    if (!fileUrl) return null;
-    const filename = path.basename(fileUrl);
-    if (process.env.VERCEL) return path.join(os.tmpdir(), 'rootle-uploads', filename);
-    return path.join(__dirname, '..', 'uploads', filename);
+// New files live in GridFS. Old files may still be on disk from before the
+// migration, so both are handled here.
+const deleteStoredFile = async (fileUrl) => {
+    if (await deleteFileByUrl(fileUrl)) return;
+
+    const filename = path.basename(fileUrl || '');
+    if (!filename) return;
+    const legacyPath = path.join(__dirname, '..', 'uploads', filename);
+    try {
+        if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
+    } catch (err) {
+        console.error('Legacy file delete error:', err.message);
+    }
 };
 
-// --- 1. UPLOAD RESOURCE ---
+// --- 1. UPLOAD RESOURCE (GridFS) ---
 exports.uploadResource = async (req, res) => {
-    let filePath = req.file ? req.file.path : null;
+    let gridFsId = null;
     try {
-        if (!req.file) return res.status(400).json({ message: "No file selected." });
+        if (!req.file || !req.file.buffer) return res.status(400).json({ message: "No file selected." });
 
         const { title, category, requestId } = req.body;
         const uploaderId = req.user.id;
+        const fileBuffer = req.file.buffer;
 
         const user = await User.findById(uploaderId);
         const departmentId = user?.department_id;
 
         if (!departmentId) {
-            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return res.status(400).json({ message: "Account not linked to a department." });
         }
 
-        const fileBuffer = fs.readFileSync(filePath);
         const fileHash = crypto.createHash('md5').update(fileBuffer).digest('hex');
         const existingFile = await Resource.findOne({ file_hash: fileHash });
 
         if (existingFile) {
-            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return res.status(400).json({ message: "Duplicate alert: File already exists." });
         }
+
+        // Write bytes to MongoDB GridFS.
+        gridFsId = await new Promise((resolve, reject) => {
+            const stream = getBucket().openUploadStream(req.file.originalname, {
+                contentType: req.file.mimetype,
+                metadata: { uploader_id: uploaderId, category, title }
+            });
+            stream.on('error', reject);
+            stream.on('finish', () => resolve(stream.id));
+            stream.end(fileBuffer);
+        });
 
         // Student uploads go to 'pending' (My Library + Lecturer Review Queue);
         // lecturer/admin/superadmin uploads go directly to 'approved'.
@@ -52,7 +67,7 @@ exports.uploadResource = async (req, res) => {
             department_id: departmentId,
             title,
             category,
-            file_url: `uploads/${path.basename(filePath)}`,
+            file_url: `/api/resources/file/${gridFsId}`,
             file_hash: fileHash,
             file_type: req.file.mimetype,
             status: initialStatus
@@ -69,8 +84,40 @@ exports.uploadResource = async (req, res) => {
         res.status(201).json(newResource);
     } catch (err) {
         console.error("CRITICAL BACKEND ERROR:", err.message);
-        if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        // Roll back the GridFS write if anything after it failed.
+        if (gridFsId) {
+            try { await getBucket().delete(gridFsId); } catch (cleanupErr) { /* ignore */ }
+        }
         res.status(500).json({ message: "Internal Server Error", details: err.message });
+    }
+};
+
+// --- STREAM A FILE FROM GRIDFS ---
+exports.getFile = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid file id." });
+
+        const objectId = new ObjectId(id);
+        const bucket = getBucket();
+        const fileInfo = await bucket.find({ _id: objectId }).next();
+        if (!fileInfo) return res.status(404).json({ message: "File not found." });
+
+        const safeName = String(fileInfo.filename || 'download').replace(/[^\w.\-]/g, '_');
+        res.set('Content-Type', fileInfo.contentType || 'application/octet-stream');
+        res.set('Content-Disposition', `inline; filename="${safeName}"`);
+        if (fileInfo.length) res.set('Content-Length', fileInfo.length);
+
+        const stream = bucket.openDownloadStream(objectId);
+        stream.on('error', (err) => {
+            console.error('GridFS stream error:', err.message);
+            if (!res.headersSent) res.status(500).json({ message: "Could not read file." });
+            else res.destroy(err);
+        });
+        stream.pipe(res);
+    } catch (err) {
+        console.error('GridFS read error:', err.message);
+        res.status(500).json({ message: "Could not read file." });
     }
 };
 
@@ -362,10 +409,7 @@ exports.rejectResource = async (req, res) => {
         const resource = await Resource.findById(req.params.id);
         if (!resource) return res.status(404).json({ message: "Resource not found" });
 
-        const physicalPath = resolveFilePath(resource.file_url);
-        if (physicalPath && fs.existsSync(physicalPath)) {
-            fs.unlinkSync(physicalPath);
-        }
+        await deleteStoredFile(resource.file_url);
 
         await Resource.findByIdAndDelete(req.params.id);
         await ResourceRating.deleteMany({ resource_id: req.params.id });
@@ -408,10 +452,7 @@ exports.permanentDelete = async (req, res) => {
         const resource = await Resource.findById(req.params.id);
         if (!resource) return res.status(404).json({ message: "Resource not found" });
 
-        const physicalPath = resolveFilePath(resource.file_url);
-        if (physicalPath && fs.existsSync(physicalPath)) {
-            fs.unlinkSync(physicalPath);
-        }
+        await deleteStoredFile(resource.file_url);
 
         await Resource.findByIdAndDelete(req.params.id);
         await ResourceRating.deleteMany({ resource_id: req.params.id });

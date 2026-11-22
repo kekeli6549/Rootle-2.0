@@ -20,6 +20,7 @@ app.set('trust proxy', 1);
 // because CORS matches origins exactly.
 const allowedOrigins = [
   process.env.CLIENT_URL,
+  'https://rootle-2-0.vercel.app',
   'https://rootle-2-0-6p7mxd9cu-lord-frostbytes-projects-d5e710e2.vercel.app',
   'http://localhost:5173',
   'http://localhost:3000'
@@ -35,7 +36,8 @@ app.use(cors({
     }
     return callback(new Error(`Origin ${origin} is not allowed by CORS`));
   },
-  credentials: true
+  credentials: true,
+  exposedHeaders: ['Content-Disposition']
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

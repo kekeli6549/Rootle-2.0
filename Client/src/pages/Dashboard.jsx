@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import API from '../api';
-import { BACKEND_URL } from '../config';
+import { resolveFileUrl } from '../config';
 import UploadModal from '../components/UploadModal';
 import Toast from '../components/Toast';
 import DownloadAction from '../components/DownloadAction';
@@ -33,17 +33,16 @@ const Dashboard = () => {
   const displayDept = user?.departmentName || user?.department || "Awaiting Sync...";
   const displayID = user?.studentId || user?.staffId || user?.idNumber || "ROOT-2026";
 
-  const getFileIcon = (fileUrl) => {
+  const getFileIcon = (fileUrl, mimeType) => {
     const extension = fileUrl?.split('.').pop().toLowerCase();
-    switch(extension) {
-      case 'pdf': return { icon: '📕', label: 'PDF', color: 'text-red-600' };
-      case 'doc':
-      case 'docx': return { icon: '📘', label: 'DOCX', color: 'text-blue-600' };
-      case 'zip':
-      case 'rar': return { icon: '📦', label: 'ZIP', color: 'text-orange-600' };
-      case 'pptx': return { icon: '📙', label: 'PPTX', color: 'text-orange-500' };
-      default: return { icon: '📄', label: 'FILE', color: 'text-timber-400' };
-    }
+    const type = (mimeType || '').toLowerCase();
+    if (type.includes('pdf') || extension === 'pdf') return { icon: '📕', label: 'PDF', color: 'text-red-600' };
+    if (type.includes('word') || ['doc', 'docx'].includes(extension)) return { icon: '📘', label: 'DOCX', color: 'text-blue-600' };
+    if (type.includes('presentation') || extension === 'pptx') return { icon: '📙', label: 'PPTX', color: 'text-orange-500' };
+    if (type.includes('sheet') || extension === 'xlsx') return { icon: '📗', label: 'XLSX', color: 'text-green-600' };
+    if (['zip', 'rar'].includes(extension)) return { icon: '📦', label: 'ZIP', color: 'text-orange-600' };
+    if (type.startsWith('image/')) return { icon: '🖼️', label: 'IMAGE', color: 'text-purple-600' };
+    return { icon: '📄', label: 'FILE', color: 'text-timber-400' };
   };
 
   const fetchData = async () => {
@@ -105,13 +104,14 @@ const Dashboard = () => {
     try { await API.post(`/resources/download/${resId}`); } catch (err) { console.error("Stat update failed"); }
 
     try {
-      const cleanPath = fileUrl.replace(/\\/g, '/').replace(/^\/+/, '');
-      const response = await fetch(`${BACKEND_URL}/${cleanPath}`);
+      const fileSrc = resolveFileUrl(fileUrl);
+      const response = await fetch(fileSrc);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      const filename = cleanPath.split('/').pop();
+      const disposedName = response.headers.get('content-disposition')?.match(/filename="?([^"]+)"?/)?.[1];
+      const filename = disposedName || decodeURIComponent(fileSrc.split('/').pop()) || 'download';
       link.setAttribute('download', filename);
       document.body.appendChild(link);
       link.click();
@@ -287,7 +287,7 @@ const Dashboard = () => {
               }
 
               const fileUrl = item.file_url || item.fileUrl;
-              const fileInfo = getFileIcon(fileUrl);
+              const fileInfo = getFileIcon(fileUrl, item.file_type);
               const uploaderId = item.uploader_id?._id || item.uploader_id || item.uploader || item.uploaderId;
               const isOwner = uploaderId === userId;
               const isPending = item.status === 'pending';
@@ -372,6 +372,7 @@ const Dashboard = () => {
             isOpen={!!selectedFile}
             onClose={() => setSelectedFile(null)}
             fileUrl={selectedFile.file_url || selectedFile.fileUrl}
+            mimeType={selectedFile.file_type}
             title={selectedFile.title}
           />
         )}

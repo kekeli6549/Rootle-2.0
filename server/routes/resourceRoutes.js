@@ -6,6 +6,12 @@ const { protect, isAdmin } = require('../middleware/authMiddleware');
 
 // STUDENT & GENERAL
 router.post('/upload', protect, upload.single('file'), resourceController.uploadResource);
+
+// Public file streaming. "<img src>" / window.open cannot send the x-auth-token
+// header, and GridFS object ids are unguessable, so this route is intentionally
+// open. Access control is enforced on the resource list endpoints.
+router.get('/file/:id', resourceController.getFile);
+
 router.get('/', protect, resourceController.getAllResources);
 router.get('/stats', protect, resourceController.getDepartmentStats);
 router.get('/rankings', protect, resourceController.getRankings);

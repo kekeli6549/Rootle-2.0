@@ -10,4 +10,14 @@ export const BACKEND_URL = (import.meta.env.VITE_API_URL || 'https://rootle-2-0-
 // All server routes are mounted under /api (see server/index.js).
 export const API_URL = `${BACKEND_URL}/api`;
 
+// Turns a stored file_url into something the browser can load.
+// Handles GridFS URLs (/api/resources/file/...), legacy uploads/... paths and
+// already-absolute URLs.
+export const resolveFileUrl = (fileUrl) => {
+  if (!fileUrl) return '';
+  const value = String(fileUrl).replace(/\\/g, '/');
+  if (/^https?:\/\//i.test(value)) return value;
+  return `${BACKEND_URL}/${value.replace(/^\/+/, '')}`;
+};
+
 export default BACKEND_URL;
