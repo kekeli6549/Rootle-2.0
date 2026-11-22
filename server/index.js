@@ -16,7 +16,7 @@ const app = express();
 app.use(helmet({ crossOriginResourcePolicy: false }));
 // Explicitly allow local frontend origins to prevent silent CORS blocks
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  origin: ['https://rootle-2-0-6p7mxd9cu-lord-frostbytes-projects-d5e710e2.vercel.app/', 'rootle-2-0-gps6-eowdtgqtp-lord-frostbytes-projects-d5e710e2.vercel.app'],
   credentials: true
 }));
 app.use(express.json());
@@ -131,7 +131,7 @@ const startServer = async () => {
     seedDatabase(); 
 
     app.listen(PORT, () => {
-      console.log(`🚀 Rootle Backend listening actively on http://localhost:${PORT}`);
+      console.log(`🚀 Rootle Backend listening actively on https://vercel.com/lord-frostbytes-projects-d5e710e2/rootle-2-0-gps6/66HBTHjLtPdH7zctY3FPi4zf3zjr:${PORT}`);
     });
   } catch (error) {
     console.error('🚨 FATAL: Failed to connect to Database. Server shutting down.');

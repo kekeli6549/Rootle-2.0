@@ -21,7 +21,7 @@ const LecturerDashboard = () => {
   const [selectedRequestId, setSelectedRequestId] = useState(null);
 
   const token = localStorage.getItem('rootle_token') || localStorage.getItem('token');
-  const BACKEND_URL = "http://localhost:5000";
+  const BACKEND_URL = "rootle-2-0-gps6-eowdtgqtp-lord-frostbytes-projects-d5e710e2.vercel.app";
 
   const fetchDashboardData = async () => {
     if (!user || (!user._id && !user.id)) return;

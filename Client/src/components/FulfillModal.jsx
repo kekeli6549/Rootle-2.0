@@ -20,7 +20,7 @@ const FulfillModal = ({ isOpen, onClose, request, onFulfillSuccess }) => {
     formData.append('requestId', request.id);
 
     try {
-      const response = await fetch('http://localhost:5000/api/resources/upload', {
+      const response = await fetch('https://vercel.com/lord-frostbytes-projects-d5e710e2/rootle-2-0-gps6/66HBTHjLtPdH7zctY3FPi4zf3zjr/api/resources/upload', {
         method: 'POST',
         headers: { 'x-auth-token': token },
         body: formData,

@@ -105,7 +105,7 @@ const Dashboard = () => {
 
     try {
       const cleanPath = fileUrl.replace(/\\/g, '/');
-      const response = await fetch(`http://localhost:5000/${cleanPath}`);
+      const response = await fetch(`https://vercel.com/lord-frostbytes-projects-d5e710e2/rootle-2-0-gps6/66HBTHjLtPdH7zctY3FPi4zf3zjr/${cleanPath}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');

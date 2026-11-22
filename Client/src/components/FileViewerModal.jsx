@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 const FileViewerModal = ({ isOpen, onClose, fileUrl, title }) => {
   if (!isOpen) return null;
 
-  const fullFileUrl = fileUrl?.startsWith('http') ? fileUrl : `http://localhost:5000/${fileUrl?.replace(/^\/+/, '')}`;
+  const fullFileUrl = fileUrl?.startsWith('http') ? fileUrl : `rootle-2-0-gps6-eowdtgqtp-lord-frostbytes-projects-d5e710e2.vercel.app/${fileUrl?.replace(/^\/+/, '')}`;
   const fileExtension = fileUrl?.split('.').pop().toLowerCase();
   const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(fileExtension);
   const isPdf = fileExtension === 'pdf';
