@@ -1,7 +1,5 @@
-// Single source of truth for the backend origin.
-// Set VITE_API_URL in Vercel (Project Settings -> Environment Variables)
-// to the production URL of the "server" deployment, e.g.
-// https://your-server-project.vercel.app
+// Single source of truth for the backend origin.*// Set VITE_API_URL in Vercel (Project Settings -> Environment Variables)
+// to the production URL of the "server" deployment, e.g.*// https://your-server-project.vercel.app
 //
 // The fallback keeps local development working and matches the last known
 // deployed backend hostname. Do NOT include a trailing slash.
