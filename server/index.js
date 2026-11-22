@@ -5,18 +5,36 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const path = require('path');
-const mongoose = require('mongoose');
+const os = require('os');
 const bcrypt = require('bcryptjs');
 const connectDB = require('./config/db');
 require('dotenv').config();
 
 const app = express();
 
+// Vercel (and most platforms) terminate TLS and forward requests through a proxy.
+// express-rate-limit needs this to trust x-forwarded-for instead of throwing.
+app.set('trust proxy', 1);
+
+// Only the real frontend origins may call the API. Trailing slashes are stripped
+// because CORS matches origins exactly.
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  'https://rootle-2-0-6p7mxd9cu-lord-frostbytes-projects-d5e710e2.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:3000'
+].filter(Boolean).map((origin) => origin.replace(/\/+$/, ''));
+
 // Middleware
 app.use(helmet({ crossOriginResourcePolicy: false }));
-// Explicitly allow local frontend origins to prevent silent CORS blocks
 app.use(cors({
-  origin: ['https://rootle-2-0-6p7mxd9cu-lord-frostbytes-projects-d5e710e2.vercel.app/', 'rootle-2-0-gps6-eowdtgqtp-lord-frostbytes-projects-d5e710e2.vercel.app'],
+  origin: (origin, callback) => {
+    // Allow health checks / server-to-server calls that have no Origin header.
+    if (!origin || allowedOrigins.includes(origin.replace(/\/+$/, ''))) {
+      return callback(null, true);
+    }
+    return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+  },
   credentials: true
 }));
 app.use(express.json());
@@ -29,29 +47,21 @@ const limiter = rateLimit({
   message: "Too many requests from this IP."
 });
 app.use('/api/', limiter);
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Routes
-const authRoutes = require('./routes/authRoutes');
-const resourceRoutes = require('./routes/resourceRoutes');
-const adminRoutes = require('./routes/adminRoutes');
+// On Vercel uploads live in /tmp; locally they live in server/uploads.
+const uploadDir = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'rootle-uploads')
+  : path.join(__dirname, 'uploads');
+app.use('/uploads', express.static(uploadDir));
 
-app.use('/api/auth', authRoutes);
-app.use('/api/resources', resourceRoutes);
-app.use('/api/admin', adminRoutes);
-
+// Quick health check (works even if the DB is temporarily unavailable).
 app.get('/', (req, res) => {
   res.json({ message: "Rootle API is live, Chief!" });
 });
 
-// Global Error Handler
-app.use((err, req, res, next) => {
-  console.error('❌ Express Error:', err.message);
-  res.status(500).json({ error: "Server Error", details: err.message });
-});
-
+// --- DATABASE + SEED INITIALIZATION (cached for warm serverless invocations) ---
 // --- AUTOMATIC IDEMPOTENT SEEDER ---
-const seedDatabase = async () => {
+async function seedDatabase() {
   try {
     const Faculty = require('./models/Faculty');
     const Department = require('./models/Department');
@@ -118,26 +128,65 @@ const seedDatabase = async () => {
   } catch (err) {
     console.error('❌ Seeding background error:', err.message);
   }
+}
+
+let initializePromise = null;
+const initialize = () => {
+  if (!initializePromise) {
+    initializePromise = (async () => {
+      await connectDB();
+      await seedDatabase();
+    })().catch((err) => {
+      // Allow a later invocation to retry instead of staying permanently failed.
+      initializePromise = null;
+      throw err;
+    });
+  }
+  return initializePromise;
 };
+
+// Every API request waits for a live DB connection (cold start safe).
+app.use(async (req, res, next) => {
+  try {
+    await initialize();
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Routes
+const authRoutes = require('./routes/authRoutes');
+const resourceRoutes = require('./routes/resourceRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+
+app.use('/api/auth', authRoutes);
+app.use('/api/resources', resourceRoutes);
+app.use('/api/admin', adminRoutes);
+
+// Global Error Handler
+app.use((err, req, res, next) => {
+  console.error('❌ Express Error:', err.message);
+  const status = err.message && err.message.includes('CORS') ? 403 : 500;
+  res.status(status).json({ error: status === 403 ? 'Forbidden' : 'Server Error', details: err.message });
+});
 
 // --- SERVER INITIALIZATION ---
 const PORT = process.env.PORT || 5000;
 
-const startServer = async () => {
-  try {
-    await connectDB(); // Wait for DB to connect before opening ports
-    
-    // Run seeder only after successful DB connection
-    seedDatabase(); 
-
-    app.listen(PORT, () => {
-      console.log(`🚀 Rootle Backend listening actively on https://vercel.com/lord-frostbytes-projects-d5e710e2/rootle-2-0-gps6/66HBTHjLtPdH7zctY3FPi4zf3zjr:${PORT}`);
+// Locally we open a port. On Vercel the exported app is used by @vercel/node.
+if (!process.env.VERCEL) {
+  initialize()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`🚀 Rootle Backend listening actively on http://localhost:${PORT}`);
+      });
+    })
+    .catch((error) => {
+      console.error('🚨 FATAL: Failed to connect to Database. Server shutting down.');
+      console.error(error.message);
+      process.exit(1);
     });
-  } catch (error) {
-    console.error('🚨 FATAL: Failed to connect to Database. Server shutting down.');
-    console.error(error);
-    process.exit(1); // Kill the process if DB fails so you aren't left guessing
-  }
-};
+}
 
-startServer();
+module.exports = app;

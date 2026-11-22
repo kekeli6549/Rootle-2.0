@@ -12,7 +12,8 @@ const DEFAULT_PASSWORD = 'Password123!';
 const seedUsers = async () => {
   try {
     // 1. Connect to Database
-    const dbUri = process.env.MONGO_URI || 'https://vercel.com/lord-frostbytes-projects-d5e710e2/rootle-2-0-gps6/66HBTHjLtPdH7zctY3FPi4zf3zjr';
+    const dbUri = process.env.MONGO_URI;
+    if (!dbUri) throw new Error('MONGO_URI is not set. Create server/.env or add it to Vercel Environment Variables.');
     await mongoose.connect(dbUri);
     console.log('🔌 Connected to MongoDB for user seeding...');
 

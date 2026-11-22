@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
+import API from '../api';
 
 const FulfillModal = ({ isOpen, onClose, request, onFulfillSuccess }) => {
   const [file, setFile] = useState(null);
@@ -12,7 +13,6 @@ const FulfillModal = ({ isOpen, onClose, request, onFulfillSuccess }) => {
     if (!file) return alert("Please select the file first! 📁");
 
     setLoading(true);
-    const token = localStorage.getItem('rootle_token');
     const formData = new FormData();
     formData.append('file', file);
     formData.append('title', request.title);
@@ -20,21 +20,12 @@ const FulfillModal = ({ isOpen, onClose, request, onFulfillSuccess }) => {
     formData.append('requestId', request.id);
 
     try {
-      const response = await fetch('https://vercel.com/lord-frostbytes-projects-d5e710e2/rootle-2-0-gps6/66HBTHjLtPdH7zctY3FPi4zf3zjr/api/resources/upload', {
-        method: 'POST',
-        headers: { 'x-auth-token': token },
-        body: formData,
-      });
-
-      if (response.ok) {
-        onFulfillSuccess();
-        onClose();
-      } else {
-        const data = await response.json();
-        alert(data.message || "Something went wrong.");
-      }
+      // API already carries the JWT and points at the configured backend /api.
+      await API.post('/resources/upload', formData);
+      onFulfillSuccess();
+      onClose();
     } catch (err) {
-      alert("Server connection failed.");
+      alert(err.response?.data?.message || "Server connection failed.");
     } finally {
       setLoading(false);
     }

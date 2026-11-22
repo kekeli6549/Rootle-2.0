@@ -1,10 +1,11 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { BACKEND_URL } from '../config';
 
 const FileViewerModal = ({ isOpen, onClose, fileUrl, title }) => {
   if (!isOpen) return null;
 
-  const fullFileUrl = fileUrl?.startsWith('http') ? fileUrl : `rootle-2-0-gps6-eowdtgqtp-lord-frostbytes-projects-d5e710e2.vercel.app/${fileUrl?.replace(/^\/+/, '')}`;
+  const fullFileUrl = fileUrl?.startsWith('http') ? fileUrl : `${BACKEND_URL}/${fileUrl?.replace(/^\/+/, '').replace(/\\/g, '/')}`;
   const fileExtension = fileUrl?.split('.').pop().toLowerCase();
   const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(fileExtension);
   const isPdf = fileExtension === 'pdf';

@@ -4,6 +4,17 @@ const ResourceRating = require('../models/ResourceRating');
 const User = require('../models/User');
 const crypto = require('crypto');
 const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+// Stored file URLs are always relative ("uploads/file.pdf") so the browser can
+// build a valid URL. This maps them to the physical location on this runtime.
+const resolveFilePath = (fileUrl) => {
+    if (!fileUrl) return null;
+    const filename = path.basename(fileUrl);
+    if (process.env.VERCEL) return path.join(os.tmpdir(), 'rootle-uploads', filename);
+    return path.join(__dirname, '..', 'uploads', filename);
+};
 
 // --- 1. UPLOAD RESOURCE ---
 exports.uploadResource = async (req, res) => {
@@ -41,7 +52,7 @@ exports.uploadResource = async (req, res) => {
             department_id: departmentId,
             title,
             category,
-            file_url: filePath,
+            file_url: `uploads/${path.basename(filePath)}`,
             file_hash: fileHash,
             file_type: req.file.mimetype,
             status: initialStatus
@@ -351,8 +362,9 @@ exports.rejectResource = async (req, res) => {
         const resource = await Resource.findById(req.params.id);
         if (!resource) return res.status(404).json({ message: "Resource not found" });
 
-        if (resource.file_url && fs.existsSync(resource.file_url)) {
-            fs.unlinkSync(resource.file_url);
+        const physicalPath = resolveFilePath(resource.file_url);
+        if (physicalPath && fs.existsSync(physicalPath)) {
+            fs.unlinkSync(physicalPath);
         }
 
         await Resource.findByIdAndDelete(req.params.id);
@@ -396,8 +408,9 @@ exports.permanentDelete = async (req, res) => {
         const resource = await Resource.findById(req.params.id);
         if (!resource) return res.status(404).json({ message: "Resource not found" });
 
-        if (resource.file_url && fs.existsSync(resource.file_url)) {
-            fs.unlinkSync(resource.file_url);
+        const physicalPath = resolveFilePath(resource.file_url);
+        if (physicalPath && fs.existsSync(physicalPath)) {
+            fs.unlinkSync(physicalPath);
         }
 
         await Resource.findByIdAndDelete(req.params.id);

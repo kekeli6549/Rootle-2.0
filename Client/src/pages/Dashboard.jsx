@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import API from '../api';
+import { BACKEND_URL } from '../config';
 import UploadModal from '../components/UploadModal';
 import Toast from '../components/Toast';
 import DownloadAction from '../components/DownloadAction';
@@ -104,8 +105,8 @@ const Dashboard = () => {
     try { await API.post(`/resources/download/${resId}`); } catch (err) { console.error("Stat update failed"); }
 
     try {
-      const cleanPath = fileUrl.replace(/\\/g, '/');
-      const response = await fetch(`https://vercel.com/lord-frostbytes-projects-d5e710e2/rootle-2-0-gps6/66HBTHjLtPdH7zctY3FPi4zf3zjr/${cleanPath}`);
+      const cleanPath = fileUrl.replace(/\\/g, '/').replace(/^\/+/, '');
+      const response = await fetch(`${BACKEND_URL}/${cleanPath}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
