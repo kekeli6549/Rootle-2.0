@@ -10,15 +10,15 @@ exports.uploadResource = async (req, res) => {
     let filePath = req.file ? req.file.path : null;
     try {
         if (!req.file) return res.status(400).json({ message: "No file selected." });
-        
-        const { title, category, requestId } = req.body; 
-        const uploaderId = req.user.id; 
+
+        const { title, category, requestId } = req.body;
+        const uploaderId = req.user.id;
 
         const user = await User.findById(uploaderId);
         const departmentId = user?.department_id;
 
         if (!departmentId) {
-            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath); 
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return res.status(400).json({ message: "Account not linked to a department." });
         }
 
@@ -27,9 +27,14 @@ exports.uploadResource = async (req, res) => {
         const existingFile = await Resource.findOne({ file_hash: fileHash });
 
         if (existingFile) {
-            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath); 
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return res.status(400).json({ message: "Duplicate alert: File already exists." });
         }
+
+        // Student uploads go to 'pending' (My Library + Lecturer Review Queue);
+        // lecturer/admin/superadmin uploads go directly to 'approved'.
+        const isStaff = ['lecturer', 'admin', 'superadmin'].includes(user.role);
+        const initialStatus = isStaff ? 'approved' : 'pending';
 
         const newResource = await Resource.create({
             uploader_id: uploaderId,
@@ -39,10 +44,10 @@ exports.uploadResource = async (req, res) => {
             file_url: filePath,
             file_hash: fileHash,
             file_type: req.file.mimetype,
-            status: 'approved'
+            status: initialStatus
         });
 
-        if (requestId) {
+        if (requestId && isStaff) {
             await ResourceRequest.findByIdAndUpdate(requestId, {
                 is_fulfilled: true,
                 fulfilled_by: uploaderId,
@@ -66,6 +71,9 @@ exports.getAllResources = async (req, res) => {
 
         if (mine === 'true') {
             query.uploader_id = req.user.id;
+            if (status && status !== 'all' && status !== 'undefined') {
+                query.status = status;
+            }
         } else {
             query.status = status === 'pending' ? 'pending' : 'approved';
         }
@@ -73,7 +81,7 @@ exports.getAllResources = async (req, res) => {
         if (search && search !== 'undefined') {
             query.title = { $regex: search, $options: 'i' };
         }
-        
+
         if (category && category !== 'All' && category !== 'undefined') {
             query.category = category;
         }
@@ -94,8 +102,10 @@ exports.getAllResources = async (req, res) => {
 
         const formattedResources = await Promise.all(resources.map(async (resItem) => {
             const ratings = await ResourceRating.find({ resource_id: resItem._id });
-            const avgRating = ratings.length > 0 ? ratings.reduce((acc, r) => acc + r.rating_value, 0) / ratings.length : 0;
-            
+            const avgRating = ratings.length > 0
+                ? ratings.reduce((acc, r) => acc + r.rating_value, 0) / ratings.length
+                : 0;
+
             return {
                 ...resItem.toObject(),
                 uploader_name: resItem.uploader_id?.full_name,
@@ -148,8 +158,8 @@ exports.createRequest = async (req, res) => {
             description
         });
         res.status(201).json(newReq);
-    } catch (err) { 
-        res.status(500).json({ message: "Request failure" }); 
+    } catch (err) {
+        res.status(500).json({ message: "Request failure" });
     }
 };
 
@@ -162,8 +172,8 @@ exports.fulfillRequest = async (req, res) => {
             fulfilled_at: Date.now()
         });
         res.json({ message: "Handled! 🤝" });
-    } catch (err) { 
-        res.status(500).json({ message: "Fulfillment failed" }); 
+    } catch (err) {
+        res.status(500).json({ message: "Fulfillment failed" });
     }
 };
 
@@ -187,8 +197,8 @@ exports.getDepartmentStats = async (req, res) => {
             total_resources: totalResources,
             open_requests: openRequests
         });
-    } catch (err) { 
-        res.status(500).json({ message: "Stats failure" }); 
+    } catch (err) {
+        res.status(500).json({ message: "Stats failure" });
     }
 };
 
@@ -202,8 +212,8 @@ exports.rateResource = async (req, res) => {
             { upsert: true, new: true }
         );
         res.json({ message: "Rating recorded" });
-    } catch (err) { 
-        res.status(500).json({ message: "Rating failure" }); 
+    } catch (err) {
+        res.status(500).json({ message: "Rating failure" });
     }
 };
 
@@ -211,10 +221,21 @@ exports.rateResource = async (req, res) => {
 exports.getRankings = async (req, res) => {
     try {
         const { role } = req.query;
+        const normalizedRole = typeof role === 'string' ? role.trim().toLowerCase() : 'all';
 
-        let pipeline = [
-            { $match: { status: 'approved' } },
-            { $group: { _id: '$uploader_id', totalUploads: { $sum: 1 } } },
+        const matchStage = normalizedRole === 'lecturer'
+            ? { $match: { uploader_id: { $ne: null } } }
+            : { $match: { status: 'approved', uploader_id: { $ne: null } } };
+
+        const pipeline = [
+            matchStage,
+            {
+                $group: {
+                    _id: '$uploader_id',
+                    totalUploads: { $sum: 1 }
+                }
+            },
+            { $match: { totalUploads: { $gte: 1 } } },
             { $sort: { totalUploads: -1 } },
             {
                 $lookup: {
@@ -227,8 +248,17 @@ exports.getRankings = async (req, res) => {
             { $unwind: '$userInfo' }
         ];
 
-        if (role && role !== 'All') {
-            pipeline.push({ $match: { 'userInfo.role': role } });
+        if (normalizedRole && normalizedRole !== 'all') {
+            pipeline.push({
+                $match: {
+                    $expr: {
+                        $eq: [
+                            { $toLower: { $trim: { input: { $ifNull: ['$userInfo.role', ''] } } } },
+                            normalizedRole
+                        ]
+                    }
+                }
+            });
         }
 
         const rankings = await Resource.aggregate(pipeline);
@@ -238,11 +268,22 @@ exports.getRankings = async (req, res) => {
             let level = 0;
             let badgeTitle = 'No Badge';
 
-            if (count >= 1000) { level = 5; badgeTitle = 'Level 5 Arch-Contributor'; }
-            else if (count >= 500) { level = 4; badgeTitle = 'Level 4 Elite Scholar'; }
-            else if (count >= 250) { level = 3; badgeTitle = 'Level 3 Master Upload'; }
-            else if (count >= 100) { level = 2; badgeTitle = 'Level 2 Senior Provider'; }
-            else if (count >= 10) { level = 1; badgeTitle = 'Level 1 Contributor'; }
+            if (count >= 1000) {
+                level = 5;
+                badgeTitle = 'Level 5 Arch-Contributor';
+            } else if (count >= 500) {
+                level = 4;
+                badgeTitle = 'Level 4 Elite Scholar';
+            } else if (count >= 250) {
+                level = 3;
+                badgeTitle = 'Level 3 Master Upload';
+            } else if (count >= 100) {
+                level = 2;
+                badgeTitle = 'Level 2 Senior Provider';
+            } else if (count >= 10) {
+                level = 1;
+                badgeTitle = 'Level 1 Contributor';
+            }
 
             return {
                 rank: index + 1,
@@ -268,12 +309,12 @@ exports.incrementDownload = async (req, res) => {
     try {
         await Resource.findByIdAndUpdate(req.params.id, { $inc: { download_count: 1 } });
         res.json({ message: "Counted." });
-    } catch (err) { 
-        res.status(500).json({ message: "Error" }); 
+    } catch (err) {
+        res.status(500).json({ message: "Error" });
     }
 };
 
-// --- 10. NEW: DELETION & ADMIN WORKFLOW HANDLERS ---
+// --- 10. DELETION & ADMIN WORKFLOW HANDLERS ---
 
 // Request resource deletion (Student)
 exports.requestDeletion = async (req, res) => {
@@ -281,7 +322,6 @@ exports.requestDeletion = async (req, res) => {
         const resource = await Resource.findById(req.params.id);
         if (!resource) return res.status(404).json({ message: "Resource not found." });
 
-        // Flag resource status as deletion requested
         resource.status = 'deletion_requested';
         await resource.save();
         res.json({ message: "Deletion request submitted to admin." });
@@ -290,18 +330,36 @@ exports.requestDeletion = async (req, res) => {
     }
 };
 
-// Admin approve resource
+// Admin approve pending resource
 exports.approveResource = async (req, res) => {
     try {
         const resource = await Resource.findByIdAndUpdate(
-            req.params.id, 
-            { status: 'approved' }, 
+            req.params.id,
+            { status: 'approved' },
             { new: true }
         );
         if (!resource) return res.status(404).json({ message: "Resource not found" });
         res.json({ message: "Resource approved successfully!" });
     } catch (err) {
         res.status(500).json({ message: "Error approving resource" });
+    }
+};
+
+// Admin reject pending resource
+exports.rejectResource = async (req, res) => {
+    try {
+        const resource = await Resource.findById(req.params.id);
+        if (!resource) return res.status(404).json({ message: "Resource not found" });
+
+        if (resource.file_url && fs.existsSync(resource.file_url)) {
+            fs.unlinkSync(resource.file_url);
+        }
+
+        await Resource.findByIdAndDelete(req.params.id);
+        await ResourceRating.deleteMany({ resource_id: req.params.id });
+        res.json({ message: "Pending resource rejected and removed." });
+    } catch (err) {
+        res.status(500).json({ message: "Error rejecting resource" });
     }
 };
 
@@ -321,8 +379,8 @@ exports.getDeletionRequests = async (req, res) => {
 exports.rejectDeletion = async (req, res) => {
     try {
         const resource = await Resource.findByIdAndUpdate(
-            req.params.id, 
-            { status: 'approved' }, 
+            req.params.id,
+            { status: 'approved' },
             { new: true }
         );
         if (!resource) return res.status(404).json({ message: "Resource not found" });
@@ -338,7 +396,6 @@ exports.permanentDelete = async (req, res) => {
         const resource = await Resource.findById(req.params.id);
         if (!resource) return res.status(404).json({ message: "Resource not found" });
 
-        // Delete physical file if it exists
         if (resource.file_url && fs.existsSync(resource.file_url)) {
             fs.unlinkSync(resource.file_url);
         }

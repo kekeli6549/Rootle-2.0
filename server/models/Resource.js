@@ -8,7 +8,11 @@ const resourceSchema = new mongoose.Schema({
     file_url: { type: String, required: true },
     file_hash: { type: String, required: true, unique: true },
     file_type: { type: String },
-    status: { type: String, enum: ['pending', 'approved'], default: 'approved' },
+    status: {
+        type: String,
+        enum: ['pending', 'approved', 'deletion_requested'],
+        default: 'pending'
+    },
     download_count: { type: Number, default: 0 },
     created_at: { type: Date, default: Date.now }
 });
