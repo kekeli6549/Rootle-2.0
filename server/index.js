@@ -94,38 +94,44 @@ async function seedDatabase() {
     }
     console.log('🌱 Faculties & Departments verified.');
 
-    // 2. Idempotent SuperAdmin Creation
-    const salt = await bcrypt.genSalt(10);
-    const superAdminPassword = await bcrypt.hash(process.env.SUPERADMIN_PASSWORD || 'SuperAdmin@123', salt);
+    // 2. Idempotent SuperAdmin Creation.
+    // Never reset an existing password on deploy: only create the account once.
+    const superAdminEmail = 'sysadmin@rootle.com';
+    if (!await User.exists({ email: superAdminEmail })) {
+      if (!process.env.SUPERADMIN_PASSWORD) {
+        console.warn('⚠️ SUPERADMIN_PASSWORD is not set; skipping superadmin seed.');
+      } else {
+        const salt = await bcrypt.genSalt(10);
+        await User.create({
+          full_name: 'Rootle System Core',
+          email: superAdminEmail,
+          password_hash: await bcrypt.hash(process.env.SUPERADMIN_PASSWORD, salt),
+          role: 'superadmin',
+          staff_id: 'ROOTLE-SA-01'
+        });
+        console.log('⚡ SuperAdmin account seeded.');
+      }
+    }
 
-    await User.findOneAndUpdate(
-      { email: 'sysadmin@rootle.com' },
-      {
-        full_name: 'Rootle System Core',
-        email: 'sysadmin@rootle.com',
-        password_hash: superAdminPassword,
-        role: 'superadmin',
-        staff_id: 'ROOTLE-SA-01'
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-    console.log('⚡ SuperAdmin account verified/seeded.');
-
-    // 3. Idempotent Department Admin Creation
-    const adminPassword = await bcrypt.hash('Admin@123', salt);
-    await User.findOneAndUpdate(
-      { email: 'deptadmin@rootle.com' },
-      {
-        full_name: 'CS Dept Admin',
-        email: 'deptadmin@rootle.com',
-        password_hash: adminPassword,
-        role: 'admin',
-        department_id: defaultDeptId,
-        staff_id: 'ROOTLE-ADM-01'
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-    console.log('🛡️ Department Admin account verified/seeded.');
+    // 3. Idempotent Department Admin Creation.
+    // DEPT_ADMIN_PASSWORD is optional; existing accounts are never overwritten.
+    const adminEmail = 'deptadmin@rootle.com';
+    if (!await User.exists({ email: adminEmail })) {
+      if (!process.env.DEPT_ADMIN_PASSWORD || !defaultDeptId) {
+        console.warn('⚠️ DEPT_ADMIN_PASSWORD not set; skipping department admin seed.');
+      } else {
+        const salt = await bcrypt.genSalt(10);
+        await User.create({
+          full_name: 'CS Dept Admin',
+          email: adminEmail,
+          password_hash: await bcrypt.hash(process.env.DEPT_ADMIN_PASSWORD, salt),
+          role: 'admin',
+          department_id: defaultDeptId,
+          staff_id: 'ROOTLE-ADM-01'
+        });
+        console.log('🛡️ Department Admin account seeded.');
+      }
+    }
 
   } catch (err) {
     console.error('❌ Seeding background error:', err.message);
@@ -170,7 +176,7 @@ app.use('/api/admin', adminRoutes);
 app.use((err, req, res, next) => {
   console.error('❌ Express Error:', err.message);
   const status = err.message && err.message.includes('CORS') ? 403 : 500;
-  res.status(status).json({ error: status === 403 ? 'Forbidden' : 'Server Error', details: err.message });
+  res.status(status).json({ error: status === 403 ? 'Forbidden' : 'Server Error' });
 });
 
 // --- SERVER INITIALIZATION ---
