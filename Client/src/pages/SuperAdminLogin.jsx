@@ -6,7 +6,7 @@ import API from '../api';
 import scribbleBg from '../assets/scribble-bg.png';
 
 const SuperAdminLogin = () => {
-  const [formData, setFormData] = useState({ email: '', password: '', godKey: '' });
+  const [formData, setFormData] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [showPasswords, setShowPasswords] = useState(false);
@@ -22,13 +22,8 @@ const SuperAdminLogin = () => {
     e.preventDefault();
     setErrorMsg('');
 
-    // GOD-KEY CHECK (Maximum Security Front-Gate)
-    const VALID_GOD_KEY = "ROOTLE-ALPHA-26"; 
-    if (formData.godKey !== VALID_GOD_KEY) {
-      setErrorMsg("CRITICAL: Invalid SuperAdmin Authorization Key. Access Denied.");
-      return;
-    }
-
+    // Privileges are verified by the server. A client-side "god key" would be
+    // visible to everyone and provide no real protection.
     setLoading(true);
     try {
       const response = await API.post('/auth/login', { 
@@ -113,19 +108,6 @@ const SuperAdminLogin = () => {
               onChange={handleChange} 
               className="w-full bg-[#1A1A1A] text-[#F5F5DC] border-2 border-[#333333] p-4 rounded-md font-bold outline-none focus:border-[#C5A059] transition-all" 
               placeholder="••••••••••••" 
-            />
-          </div>
-
-          <div>
-            <label className="text-[9px] font-black uppercase text-[#C5A059] ml-1 tracking-widest block mb-1">Clearance Key</label>
-            <input 
-              required 
-              type={showPasswords ? "text" : "password"} 
-              name="godKey" 
-              value={formData.godKey}
-              onChange={handleChange} 
-              className="w-full bg-[#1A1A1A] border-2 border-[#C5A059] text-[#C5A059] p-4 rounded-md font-mono placeholder:text-[#C5A059]/30 outline-none focus:bg-[#C5A059]/10 transition-all" 
-              placeholder="ENTER-ALPHA-KEY" 
             />
           </div>
 

@@ -6,6 +6,9 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { getBucket, deleteFileByUrl, ObjectId } = require('../config/gridfs');
+const { isStaff, canManageDepartment, isOwnerOrStaff } = require('../middleware/authMiddleware');
+
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // New files live in GridFS. Old files may still be on disk from before the
 // migration, so both are handled here.
@@ -21,6 +24,8 @@ const deleteStoredFile = async (fileUrl) => {
         console.error('Legacy file delete error:', err.message);
     }
 };
+
+exports.deleteStoredFile = deleteStoredFile;
 
 // --- 1. UPLOAD RESOURCE (GridFS) ---
 exports.uploadResource = async (req, res) => {
@@ -88,7 +93,7 @@ exports.uploadResource = async (req, res) => {
         if (gridFsId) {
             try { await getBucket().delete(gridFsId); } catch (cleanupErr) { /* ignore */ }
         }
-        res.status(500).json({ message: "Internal Server Error", details: err.message });
+        res.status(500).json({ message: "Internal Server Error" });
     }
 };
 
@@ -127,17 +132,23 @@ exports.getAllResources = async (req, res) => {
         const { search, category, departmentId, status, trending, mine } = req.query;
         let query = {};
 
+        const staff = isStaff(req.user);
+
         if (mine === 'true') {
             query.uploader_id = req.user.id;
             if (status && status !== 'all' && status !== 'undefined') {
                 query.status = status;
             }
+        } else if (status === 'pending') {
+            // Pending uploads are a staff review queue, not public content.
+            if (!staff) return res.status(403).json({ message: "Access denied." });
+            query.status = 'pending';
         } else {
-            query.status = status === 'pending' ? 'pending' : 'approved';
+            query.status = 'approved';
         }
 
         if (search && search !== 'undefined') {
-            query.title = { $regex: search, $options: 'i' };
+            query.title = { $regex: escapeRegex(search), $options: 'i' };
         }
 
         if (category && category !== 'All' && category !== 'undefined') {
@@ -148,7 +159,7 @@ exports.getAllResources = async (req, res) => {
             query.department_id = departmentId;
         }
 
-        let sortOption = { createdAt: -1 };
+        let sortOption = { created_at: -1 };
         if (trending === 'true') {
             sortOption = { download_count: -1 };
         }
@@ -184,14 +195,18 @@ exports.getRequests = async (req, res) => {
     try {
         const { departmentId } = req.query;
         let query = { is_fulfilled: false };
-        if (departmentId && departmentId !== 'undefined' && departmentId !== 'null') {
+
+        if (!isStaff(req.user)) {
+            // Students only see their own help requests.
+            query.requester_id = req.user.id;
+        } else if (departmentId && departmentId !== 'undefined' && departmentId !== 'null') {
             query.department_id = departmentId;
         }
 
         const requests = await ResourceRequest.find(query)
             .populate('requester_id', 'full_name')
             .populate('department_id', 'name')
-            .sort({ createdAt: -1 });
+            .sort({ created_at: -1 });
 
         const formatted = requests.map(r => ({
             ...r.toObject(),
@@ -209,6 +224,9 @@ exports.getRequests = async (req, res) => {
 exports.createRequest = async (req, res) => {
     try {
         const { title, description, departmentId } = req.body;
+        if (!title || !String(title).trim()) {
+            return res.status(400).json({ message: "A request title is required." });
+        }
         const newReq = await ResourceRequest.create({
             requester_id: req.user.id,
             department_id: departmentId || null,
@@ -224,11 +242,16 @@ exports.createRequest = async (req, res) => {
 // --- 5. FULFILL REQUEST ---
 exports.fulfillRequest = async (req, res) => {
     try {
-        await ResourceRequest.findByIdAndUpdate(req.params.id, {
-            is_fulfilled: true,
-            fulfilled_by: req.user.id,
-            fulfilled_at: Date.now()
-        });
+        const request = await ResourceRequest.findById(req.params.id);
+        if (!request) return res.status(404).json({ message: "Request not found." });
+        if (!isStaff(req.user) || !canManageDepartment(req.user, request.department_id)) {
+            return res.status(403).json({ message: "Access denied." });
+        }
+
+        request.is_fulfilled = true;
+        request.fulfilled_by = req.user.id;
+        request.fulfilled_at = Date.now();
+        await request.save();
         res.json({ message: "Handled! 🤝" });
     } catch (err) {
         res.status(500).json({ message: "Fulfillment failed" });
@@ -264,9 +287,16 @@ exports.getDepartmentStats = async (req, res) => {
 exports.rateResource = async (req, res) => {
     try {
         const { resourceId, rating } = req.body;
+        const numericRating = Number(rating);
+        if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
+            return res.status(400).json({ message: "Rating must be a whole number from 1 to 5." });
+        }
+        if (!await Resource.exists({ _id: resourceId, status: 'approved' })) {
+            return res.status(404).json({ message: "Resource not found." });
+        }
         await ResourceRating.findOneAndUpdate(
             { resource_id: resourceId, user_id: req.user.id },
-            { rating_value: rating },
+            { rating_value: numericRating },
             { upsert: true, new: true }
         );
         res.json({ message: "Rating recorded" });
@@ -365,7 +395,12 @@ exports.getRankings = async (req, res) => {
 // --- 9. DOWNLOAD INCREMENT ---
 exports.incrementDownload = async (req, res) => {
     try {
-        await Resource.findByIdAndUpdate(req.params.id, { $inc: { download_count: 1 } });
+        const updated = await Resource.findByIdAndUpdate(
+            req.params.id,
+            { $inc: { download_count: 1 } },
+            { new: true }
+        );
+        if (!updated) return res.status(404).json({ message: "Resource not found." });
         res.json({ message: "Counted." });
     } catch (err) {
         res.status(500).json({ message: "Error" });
@@ -379,6 +414,9 @@ exports.requestDeletion = async (req, res) => {
     try {
         const resource = await Resource.findById(req.params.id);
         if (!resource) return res.status(404).json({ message: "Resource not found." });
+        if (!isOwnerOrStaff(req.user, resource.uploader_id)) {
+            return res.status(403).json({ message: "You can only request removal of your own uploads." });
+        }
 
         resource.status = 'deletion_requested';
         await resource.save();
@@ -391,12 +429,14 @@ exports.requestDeletion = async (req, res) => {
 // Admin approve pending resource
 exports.approveResource = async (req, res) => {
     try {
-        const resource = await Resource.findByIdAndUpdate(
-            req.params.id,
-            { status: 'approved' },
-            { new: true }
-        );
+        const resource = await Resource.findById(req.params.id);
         if (!resource) return res.status(404).json({ message: "Resource not found" });
+        if (!canManageDepartment(req.user, resource.department_id)) {
+            return res.status(403).json({ message: "Access denied." });
+        }
+
+        resource.status = 'approved';
+        await resource.save();
         res.json({ message: "Resource approved successfully!" });
     } catch (err) {
         res.status(500).json({ message: "Error approving resource" });
@@ -408,6 +448,9 @@ exports.rejectResource = async (req, res) => {
     try {
         const resource = await Resource.findById(req.params.id);
         if (!resource) return res.status(404).json({ message: "Resource not found" });
+        if (!canManageDepartment(req.user, resource.department_id)) {
+            return res.status(403).json({ message: "Access denied." });
+        }
 
         await deleteStoredFile(resource.file_url);
 
@@ -422,7 +465,11 @@ exports.rejectResource = async (req, res) => {
 // Get all pending deletion requests (Admin)
 exports.getDeletionRequests = async (req, res) => {
     try {
-        const requests = await Resource.find({ status: 'deletion_requested' })
+        const query = { status: 'deletion_requested' };
+        if (req.user?.role !== 'superadmin' && req.user?.department_id) {
+            query.department_id = req.user.department_id;
+        }
+        const requests = await Resource.find(query)
             .populate('uploader_id', 'full_name email')
             .populate('department_id', 'name');
         res.json(requests);
@@ -434,12 +481,14 @@ exports.getDeletionRequests = async (req, res) => {
 // Reject deletion request (Admin - restores status back to approved)
 exports.rejectDeletion = async (req, res) => {
     try {
-        const resource = await Resource.findByIdAndUpdate(
-            req.params.id,
-            { status: 'approved' },
-            { new: true }
-        );
+        const resource = await Resource.findById(req.params.id);
         if (!resource) return res.status(404).json({ message: "Resource not found" });
+        if (!canManageDepartment(req.user, resource.department_id)) {
+            return res.status(403).json({ message: "Access denied." });
+        }
+
+        resource.status = 'approved';
+        await resource.save();
         res.json({ message: "Deletion request rejected. Resource restored." });
     } catch (err) {
         res.status(500).json({ message: "Error rejecting deletion request" });
@@ -451,6 +500,9 @@ exports.permanentDelete = async (req, res) => {
     try {
         const resource = await Resource.findById(req.params.id);
         if (!resource) return res.status(404).json({ message: "Resource not found" });
+        if (!canManageDepartment(req.user, resource.department_id)) {
+            return res.status(403).json({ message: "Access denied." });
+        }
 
         await deleteStoredFile(resource.file_url);
 

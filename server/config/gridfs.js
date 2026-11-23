@@ -1,6 +1,8 @@
 // server/config/gridfs.js
 const mongoose = require('mongoose');
-const { GridFSBucket, ObjectId } = require('mongodb');
+// Reuse the MongoDB driver bundled with Mongoose instead of installing a
+// second, differently versioned copy.
+const { GridFSBucket, ObjectId } = mongoose.mongo;
 
 const BUCKET_NAME = 'rootle_files';
 let bucket = null;

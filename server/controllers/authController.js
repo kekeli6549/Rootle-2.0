@@ -5,6 +5,8 @@ const Department = require('../models/Department');
 const Faculty = require('../models/Faculty');
 const StaffKey = require('../models/StaffKey');
 
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+
 // Helper function to check 120-second key timeout rules
 const validateAndBurnKey = async (staffKeyInput) => {
   const keyRecord = await StaffKey.findOne({ key: staffKeyInput });
@@ -64,7 +66,15 @@ exports.getDepartments = async (req, res) => {
 
 exports.register = async (req, res) => {
   try {
-    const { fullName, email, password, role, departmentId, idNumber, staffKey } = req.body;
+    const { fullName, password, role, departmentId, idNumber, staffKey } = req.body;
+    const email = normalizeEmail(req.body.email);
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ message: "Invalid email address." });
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters." });
+    }
 
     const userExists = await User.findOne({ email });
     if (userExists) return res.status(400).json({ message: "User already exists." });
@@ -73,8 +83,10 @@ exports.register = async (req, res) => {
     let assignedRole = role || 'student';
     let keyRecord = null;
 
-    // 1. MASTER KEY LOGIC FOR THE FIRST SUPER ADMIN
-    if (staffKey === 'ROOTLE-ALPHA-26') {
+    // 1. One-time setup key for the first super admin.
+    // The key lives only in server-side config; it is never shipped to the client.
+    const setupKey = process.env.SUPERADMIN_SETUP_KEY;
+    if (setupKey && staffKey === setupKey) {
       const superAdminExists = await User.findOne({ role: 'superadmin' });
       
       if (superAdminExists) {
@@ -160,18 +172,11 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
-    const { email, password, staffKey } = req.body;
-    
-    let keyRecord = null;
-    // If a staffKey is supplied during login validation checkpoints, validate the 120s window
-    if (staffKey && staffKey !== 'ROOTLE-ALPHA-26') {
-      const validation = await validateAndBurnKey(staffKey);
-      if (validation.error) {
-        return res.status(400).json({ message: validation.error });
-      }
-      keyRecord = validation.keyRecord;
-    }
+    const { password } = req.body;
+    const email = normalizeEmail(req.body.email);
 
+    // Staff log in with their account credentials only. Registration keys are
+    // for creating accounts, not for signing in, and must never be burned here.
     const user = await User.findOne({ email }).populate({
       path: 'department_id',
       populate: { path: 'faculty_id' }
@@ -181,12 +186,6 @@ exports.login = async (req, res) => {
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) return res.status(400).json({ message: "Invalid Credentials" });
-
-    // Burn key on successful login validation if applicable
-    if (keyRecord) {
-      keyRecord.is_used = true;
-      await keyRecord.save();
-    }
 
     const token = jwt.sign(
       { id: user._id, role: user.role, department_id: user.department_id?._id || null }, 

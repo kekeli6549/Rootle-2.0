@@ -46,4 +46,19 @@ const isSuperAdmin = (req, res, next) => {
     }
 };
 
-module.exports = { protect, isAdmin, isSuperAdmin };
+const isStaff = (user) => ['admin', 'lecturer', 'superadmin'].includes(user?.role);
+
+// Superadmins may manage every department; other staff may only manage their own.
+const canManageDepartment = (user, departmentId) => {
+    if (!user) return false;
+    if (user.role === 'superadmin') return true;
+    if (!isStaff(user) || !departmentId) return false;
+    return String(user.department_id) === String(departmentId);
+};
+
+const isOwnerOrStaff = (user, ownerId) => {
+    if (!user || !ownerId) return false;
+    return isStaff(user) || String(user._id) === String(ownerId);
+};
+
+module.exports = { protect, isAdmin, isSuperAdmin, isStaff, canManageDepartment, isOwnerOrStaff };

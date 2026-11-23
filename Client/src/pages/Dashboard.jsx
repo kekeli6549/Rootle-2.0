@@ -80,7 +80,11 @@ const Dashboard = () => {
 
       if (viewMode === 'My Requests') {
         const myRequests = Array.isArray(data)
-          ? data.filter(req => (req.requester_id || req.requester || req.requesterId) === userId)
+          ? data.filter(req => {
+              const requester = req.requester_id || req.requester || req.requesterId;
+              const requesterId = requester?._id || requester;
+              return String(requesterId) === String(userId);
+            })
           : [];
         setItems(myRequests);
       } else {
@@ -106,6 +110,7 @@ const Dashboard = () => {
     try {
       const fileSrc = resolveFileUrl(fileUrl);
       const response = await fetch(fileSrc);
+      if (!response.ok) throw new Error(`File request failed (${response.status})`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
