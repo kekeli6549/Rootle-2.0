@@ -3,7 +3,7 @@ const User = require('../models/User');
 const Department = require('../models/Department');
 const Faculty = require('../models/Faculty');
 const DeletionRequest = require('../models/DeletionRequest');
-const fs = require('fs');
+const { deleteStoredFile } = require('./resourceController');
 const StaffKey = require('../models/StaffKey');
 const crypto = require('crypto');
 
@@ -57,15 +57,8 @@ exports.permanentDelete = async (req, res) => {
             return res.status(404).json({ message: "Resource not found" });
         }
 
-        const filePath = resource.file_url;
-        if (filePath && fs.existsSync(filePath)) {
-            // ✅ Wrapped in try/catch to prevent server crashes if the file is locked or missing
-            try {
-                fs.unlinkSync(filePath);
-            } catch (fsErr) {
-                console.warn(`⚠️ Warning: Could not delete physical file at ${filePath}:`, fsErr.message);
-            }
-        }
+        // Handles both GridFS object ids and legacy uploads/... paths.
+        await deleteStoredFile(resource.file_url);
 
         await DeletionRequest.deleteMany({ resource_id: resourceId });
         await Resource.findByIdAndDelete(resourceId);
