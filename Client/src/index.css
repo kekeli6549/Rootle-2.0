@@ -34,6 +34,23 @@ h1, h2, h3, h4, h5, h6 {
     to { background-position: 200% center; }
   }
 
+  /* Root & Sap Pulse — slow organic flow for skeleton loaders */
+  @keyframes root-pulse {
+    0%, 100% {
+      background-position: 0% 50%;
+      opacity: 0.55;
+    }
+    50% {
+      background-position: 100% 50%;
+      opacity: 0.85;
+    }
+  }
+
+  .animate-root-pulse {
+    animation: root-pulse 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    background-size: 200% auto;
+  }
+
   /* The Low-Fluorescent Backlight Glow */
   .glow-backlight {
     text-shadow: 0 0 15px rgba(139, 69, 13, 0.3), 0 0 30px rgba(139, 69, 13, 0.1);
@@ -56,4 +73,125 @@ h1, h2, h3, h4, h5, h6 {
     0 0 30px rgba(62, 39, 35, 0.4);
   font-weight: 700;
   letter-spacing: -0.01em;
+}
+
+
+/* -----------------------------------------------------------
+   PRINT STYLES — Rootle-inspired scribble art backgrounds
+   When a user prints a dashboard, the page keeps the parchment
+   feel with a subtle scribble watermark so it looks like a
+   printed root-system field note.
+   ----------------------------------------------------------- */
+@media print {
+  body {
+    background-color: #F5F5DC !important;
+    color: #3E2723 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide UI chrome on print */
+  .no-print,
+  .sticky,
+  .fixed {
+    display: none !important;
+  }
+
+  /* Main content takes full width when printing */
+  .print-full {
+    width: 100% !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Subtle scribble watermark behind printed pages */
+  @page {
+    margin: 1cm;
+    background-image: url('/src/assets/scribble-bg.png');
+    background-repeat: repeat;
+    background-size: 400px;
+    background-opacity: 0.12;
+  }
+
+  /* Ensure cards have enough contrast on paper */
+  .print-card {
+    background: #FFFFFF !important;
+    border: 2px solid #3E2723 !important;
+    box-shadow: 4px 4px 0px 0px rgba(62, 39, 35, 0.4) !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    page-break-inside: avoid;
+  }
+
+  /* Hide decorative pulse animations in print */
+  .animate-root-pulse,
+  .animate-pulse {
+    animation: none !important;
+    opacity: 1 !important;
+    background: #F5F5DC !important;
+  }
+}
+
+/* -----------------------------------------------------------
+   AUTUMN ROOT CARD — gentle elevation for resource cards
+   ----------------------------------------------------------- */
+.root-card {
+  background: #FFFFFF;
+  border: 2px solid #3E2723;
+  border-radius: 20px;
+  box-shadow: 6px 6px 0px 0px rgba(62, 39, 35, 1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.root-card:hover {
+  box-shadow: 12px 12px 0px 0px rgba(62, 39, 35, 1);
+  transform: translateY(-2px);
+}
+
+/* -----------------------------------------------------------
+   GOLD LEAF BUTTON — primary action styling
+   ----------------------------------------------------------- */
+.btn-gold-leaf {
+  background: #3E2723;
+  color: #F5F5DC;
+  border: 2px solid #3E2723;
+  border-radius: 12px;
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 0.4);
+  transition: all 0.2s ease;
+}
+
+.btn-gold-leaf:hover {
+  background: #C5A059;
+  color: #3E2723;
+  box-shadow: none;
+  transform: translateY(-1px);
+}
+
+.btn-gold-leaf:active {
+  transform: translateY(1px);
+  box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 0.4);
+}
+
+/* -----------------------------------------------------------
+   SCROLLBAR — timber themed
+   ----------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #F5F5DC;
+}
+::-webkit-scrollbar-thumb {
+  background: #C5A059;
+  border-radius: 6px;
+  border: 2px solid #F5F5DC;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #bf953f;
 }
