@@ -3,8 +3,6 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import API from '../api';
 import scribbleBg from '../assets/scribble-bg.png';
-import Logo from '../components/Logo';
-import SkeletonLoader from '../components/SkeletonLoader';
 
 const Leaderboard = () => {
   const navigate = useNavigate();
@@ -43,143 +41,120 @@ const Leaderboard = () => {
 
   return (
     <div
-      className="min-h-screen p-4 sm:p-6 md:p-12 relative font-body"
+      className="min-h-screen p-4 sm:p-6 md:p-12 relative"
       style={{
         backgroundColor: '#F5F5DC',
         backgroundImage: `url(${scribbleBg})`,
-        backgroundSize: '400px',
-        backgroundRepeat: 'repeat'
+        backgroundSize: '400px'
       }}
     >
-      {/* Top Header with Logo */}
-      <header className="sticky top-0 z-40 border-b-2 border-timber-800/60 bg-timber-50/80 backdrop-blur-md mb-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16 sm:h-20">
-            <div className="flex items-center gap-4 sm:gap-6 flex-shrink-0">
-              <Logo size="lg" variant="default" />
-              <span className="font-display font-black tracking-tighter text-[#3E2723] uppercase text-xl sm:text-2xl lg:text-3xl flex items-center gap-1.5 leading-none">
-                Rootle<span className="text-gold-leaf">.</span>
-              </span>
-            </div>
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 sm:mb-10 gap-6">
+        <div>
+          <h1 className="text-4xl sm:text-5xl font-black text-[#3E2723] tracking-tighter mb-2">
+            Hall of Fame.
+          </h1>
+          <p className="text-[#5D4037] text-sm sm:text-base font-medium italic">
+            Recognizing top contributors scaling up Rootle knowledge 🏆
+          </p>
+        </div>
 
-            <nav className="hidden sm:flex items-center gap-6 sm:gap-8 ml-auto">
+        <div className="flex flex-wrap lg:flex-nowrap items-center gap-3 sm:gap-4 w-full lg:w-auto">
+          <div className="flex bg-[#FFF8E1] border-2 border-[#3E2723] rounded-xl p-1 shadow-sm w-full sm:w-auto overflow-x-auto">
+            {['All', 'student', 'lecturer'].map((role) => (
               <button
-                onClick={() => navigate(-1)}
-                className="text-timber-800 font-display font-black uppercase text-xs sm:text-sm tracking-widest hover:text-gold-leaf transition-colors px-4 py-2 rounded-lg hover:bg-white/50 transition-all"
+                key={role}
+                onClick={() => setSelectedRole(role)}
+                className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-[10px] sm:text-xs font-black uppercase transition-all ${
+                  selectedRole === role
+                    ? 'bg-[#3E2723] text-[#F5F5DC] shadow'
+                    : 'text-[#3E2723] hover:bg-[#D7CCC8]/55'
+                }`}
               >
-                Back
+                {role}
               </button>
-            </nav>
+            ))}
           </div>
+
+          <button
+            onClick={() => navigate(-1)}
+            className="px-6 py-2 border-2 border-[#3E2723] rounded-full font-bold text-[#3E2723] text-sm hover:bg-[#D7CCC8] transition w-full sm:w-auto"
+          >
+            Back
+          </button>
         </div>
-      </header>
+      </div>
 
-      {/* Header Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 sm:mb-10 gap-6">
-          <div>
-            <h1 className="text-4xl sm:text-5xl font-black text-[#3E2723] tracking-tighter mb-2">
-              Hall of Fame.
-            </h1>
-            <p className="text-[#5D4037] text-sm sm:text-base font-medium italic">
-              Recognizing top contributors scaling up Rootle knowledge 🏆
-            </p>
-          </div>
-
-          <div className="flex flex-wrap lg:flex-nowrap items-center gap-3 sm:gap-4 w-full lg:w-auto">
-            <div className="flex bg-[#FFF8E1] border-2 border-[#3E2723] rounded-xl p-1 shadow-sm w-full sm:w-auto overflow-x-auto">
-              {['All', 'student', 'lecturer'].map((role) => (
-                <button
-                  key={role}
-                  onClick={() => setSelectedRole(role)}
-                  className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-[10px] sm:text-xs font-black uppercase transition-all ${
-                    selectedRole === role
-                      ? 'bg-[#3E2723] text-[#F5F5DC] shadow'
-                      : 'text-[#3E2723] hover:bg-[#D7CCC8]/55'
-                  }`}
-                >
-                  {role}
-                </button>
-              ))}
+      {/* Rankings List / Table */}
+      <div className="bg-[#FFF8E1] rounded-[20px] sm:rounded-[30px] border-2 sm:border-4 border-[#3E2723] shadow-[4px_4px_0px_0px_rgba(62,39,35,0.9)] sm:shadow-[8px_8px_0px_0px_rgba(62,39,35,0.9)] overflow-hidden w-full">
+        <div className="overflow-x-auto w-full">
+          <div className="min-w-[600px] lg:min-w-full">
+            <div className="grid grid-cols-12 bg-[#3E2723] text-[#F5F5DC] px-4 sm:px-6 py-3 sm:py-4 font-black text-[9px] sm:text-xs uppercase tracking-wider">
+              <div className="col-span-1 text-center">Rank</div>
+              <div className="col-span-5">Scholar / Contributor</div>
+              <div className="col-span-2 text-center">Role</div>
+              <div className="col-span-2 text-center">Uploads</div>
+              <div className="col-span-2 text-right pr-2">Badge Tier</div>
             </div>
-          </div>
-        </div>
 
-        {/* Rankings List / Table */}
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <SkeletonLoader count={4} variant="card" />
-            <p className="mt-8 font-display font-black text-timber-400 uppercase text-[10px] sm:text-xs tracking-widest">CALCULATING LEADERBOARD STATS…</p>
-          </div>
-        ) : rankings.length === 0 ? (
-          <div className="py-20 sm:py-32 text-center border-4 border-dotted border-timber-300 rounded-[30px] sm:rounded-[60px] bg-white/50 backdrop-blur-sm mx-auto w-full max-w-3xl">
-            <span className="text-5xl sm:text-6xl mb-4 sm:mb-6 block opacity-20">🏆</span>
-            <p className="font-display font-black text-timber-400 uppercase text-lg sm:text-xl tracking-widest break-words">
-              No rankings found for this category yet. Be the first to upload! 🚀
-            </p>
-          </div>
-        ) : (
-          <div className="bg-[#FFF8E1] rounded-[20px] sm:rounded-[30px] border-2 sm:border-4 border-[#3E2723] shadow-[4px_4px_0px_0px_rgba(62,39,35,0.9)] sm:shadow-[8px_8px_0px_0px_rgba(62,39,35,0.9)] overflow-hidden w-full">
-            <div className="overflow-x-auto w-full">
-              <div className="min-w-[600px] lg:min-w-full">
-                <div className="grid grid-cols-12 bg-[#3E2723] text-[#F5F5DC] px-4 sm:px-6 py-3 sm:py-4 font-black text-[9px] sm:text-xs uppercase tracking-wider">
-                  <div className="col-span-1 text-center">Rank</div>
-                  <div className="col-span-5">Scholar / Contributor</div>
-                  <div className="col-span-2 text-center">Role</div>
-                  <div className="col-span-2 text-center">Uploads</div>
-                  <div className="col-span-2 text-right pr-2">Badge Tier</div>
-                </div>
-
-                <div className="divide-y-2 divide-[#3E2723]/10">
-                  {rankings.map((item, index) => (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      key={item.userId || index}
-                      className="grid grid-cols-12 px-4 sm:px-6 py-3 sm:py-4 items-center hover:bg-[#FFE0B2]/30 transition-colors"
-                    >
-                      <div className="col-span-1 text-center font-black text-base sm:text-lg text-[#3E2723]">
-                        {item.rank === 1
-                          ? '🥇'
-                          : item.rank === 2
-                          ? '🥈'
-                          : item.rank === 3
-                          ? '🥉'
-                          : `#${item.rank}`}
-                      </div>
-                      <div className="col-span-5 flex flex-col truncate pr-2">
-                        <span className="font-black text-[#3E2723] text-sm sm:text-base truncate">
-                          {item.fullName}
-                        </span>
-                        <span className="text-[10px] sm:text-xs text-[#8D6E63] font-medium truncate">
-                          {item.role}
-                        </span>
-                      </div>
-                      <div className="col-span-2 text-center">
-                        <span className="bg-[#D7CCC8] px-2 sm:px-3 py-1 rounded-full text-[8px] sm:text-[10px] font-black uppercase text-[#3E2723]">
-                          {item.role}
-                        </span>
-                      </div>
-                      <div className="col-span-2 text-center font-black text-[#3E2723] text-base sm:text-lg">
-                        {item.totalUploads}
-                      </div>
-                      <div className="col-span-2 text-right">
-                        <span
-                          className={`inline-block px-2 sm:px-3 py-1 rounded-lg text-[8px] sm:text-[10px] font-black border uppercase shadow-sm truncate max-w-full ${getBadgeColor(
-                            item.level
-                          )}`}
-                        >
-                          {item.badgeTitle}
-                        </span>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
+            {loading ? (
+              <div className="py-16 sm:py-20 text-center font-black text-[#3E2723] text-base sm:text-lg animate-pulse">
+                Calculating Leaderboard Stats...
               </div>
-            </div>
+            ) : rankings.length === 0 ? (
+              <div className="py-16 sm:py-20 text-center font-bold text-[#5D4037] text-sm sm:text-base px-4">
+                No rankings found for this category yet. Be the first to upload! 🚀
+              </div>
+            ) : (
+              <div className="divide-y-2 divide-[#3E2723]/10">
+                {rankings.map((item, index) => (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    key={item.userId || index}
+                    className="grid grid-cols-12 px-4 sm:px-6 py-3 sm:py-4 items-center hover:bg-[#FFE0B2]/30 transition-colors"
+                  >
+                    <div className="col-span-1 text-center font-black text-base sm:text-lg text-[#3E2723]">
+                      {item.rank === 1
+                        ? '🥇'
+                        : item.rank === 2
+                        ? '🥈'
+                        : item.rank === 3
+                        ? '🥉'
+                        : `#${item.rank}`}
+                    </div>
+                    <div className="col-span-5 flex flex-col truncate pr-2">
+                      <span className="font-black text-[#3E2723] text-sm sm:text-base truncate">
+                        {item.fullName}
+                      </span>
+                      <span className="text-[10px] sm:text-xs text-[#8D6E63] font-medium truncate">
+                        {item.role}
+                      </span>
+                    </div>
+                    <div className="col-span-2 text-center">
+                      <span className="bg-[#D7CCC8] px-2 sm:px-3 py-1 rounded-full text-[8px] sm:text-[10px] font-black uppercase text-[#3E2723]">
+                        {item.role}
+                      </span>
+                    </div>
+                    <div className="col-span-2 text-center font-black text-[#3E2723] text-base sm:text-lg">
+                      {item.totalUploads}
+                    </div>
+                    <div className="col-span-2 text-right">
+                      <span
+                        className={`inline-block px-2 sm:px-3 py-1 rounded-lg text-[8px] sm:text-[10px] font-black border uppercase shadow-sm truncate max-w-full ${getBadgeColor(
+                          item.level
+                        )}`}
+                      >
+                        {item.badgeTitle}
+                      </span>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
