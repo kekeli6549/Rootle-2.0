@@ -129,7 +129,7 @@ const Leaderboard = () => {
                         {item.fullName}
                       </span>
                       <span className="text-[10px] sm:text-xs text-[#8D6E63] font-medium truncate">
-                        {item.email}
+                        {item.role}
                       </span>
                     </div>
                     <div className="col-span-2 text-center">

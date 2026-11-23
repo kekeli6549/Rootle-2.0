@@ -169,10 +169,21 @@ exports.getAllResources = async (req, res) => {
             .populate('department_id', 'name')
             .sort(sortOption);
 
-        const formattedResources = await Promise.all(resources.map(async (resItem) => {
-            const ratings = await ResourceRating.find({ resource_id: resItem._id });
-            const avgRating = ratings.length > 0
-                ? ratings.reduce((acc, r) => acc + r.rating_value, 0) / ratings.length
+        // Fetch all ratings in a single query instead of one per resource (N+1 fix).
+        const resourceIds = resources.map((r) => r._id);
+        const allRatings = await ResourceRating.find({ resource_id: { $in: resourceIds } });
+        const ratingsByResource = {};
+        allRatings.forEach((rating) => {
+            if (!ratingsByResource[rating.resource_id]) {
+                ratingsByResource[rating.resource_id] = [];
+            }
+            ratingsByResource[rating.resource_id].push(rating.rating_value);
+        });
+
+        const formattedResources = resources.map((resItem) => {
+            const itemRatings = ratingsByResource[resItem._id] || [];
+            const avgRating = itemRatings.length > 0
+                ? itemRatings.reduce((acc, val) => acc + val, 0) / itemRatings.length
                 : 0;
 
             return {
@@ -181,7 +192,7 @@ exports.getAllResources = async (req, res) => {
                 department_name: resItem.department_id?.name,
                 average_rating: avgRating
             };
-        }));
+        });
 
         res.json(formattedResources);
     } catch (err) {
@@ -311,9 +322,7 @@ exports.getRankings = async (req, res) => {
         const { role } = req.query;
         const normalizedRole = typeof role === 'string' ? role.trim().toLowerCase() : 'all';
 
-        const matchStage = normalizedRole === 'lecturer'
-            ? { $match: { uploader_id: { $ne: null } } }
-            : { $match: { status: 'approved', uploader_id: { $ne: null } } };
+        const matchStage = { $match: { status: 'approved', uploader_id: { $ne: null } } };
 
         const pipeline = [
             matchStage,
@@ -336,13 +345,17 @@ exports.getRankings = async (req, res) => {
             { $unwind: '$userInfo' }
         ];
 
+        // 'admin' and 'lecturer' are treated as the same staff tier.
         if (normalizedRole && normalizedRole !== 'all') {
+            const roles = normalizedRole === 'lecturer'
+                ? ['lecturer', 'admin']
+                : [normalizedRole];
             pipeline.push({
                 $match: {
                     $expr: {
-                        $eq: [
+                        $in: [
                             { $toLower: { $trim: { input: { $ifNull: ['$userInfo.role', ''] } } } },
-                            normalizedRole
+                            roles
                         ]
                     }
                 }

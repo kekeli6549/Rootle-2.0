@@ -94,6 +94,24 @@ async function seedDatabase() {
     }
     console.log('🌱 Faculties & Departments verified.');
 
+    // --- Database indexes for faster lookups ---
+    // Indexes make searches and logins faster as your user base grows.
+    await User.collection.createIndex({ email: 1 }, { unique: true, background: true });
+    await User.collection.createIndex({ role: 1 }, { background: true });
+    await User.collection.createIndex({ department_id: 1 }, { background: true });
+
+    await Resource.collection.createIndex({ department_id: 1 }, { background: true });
+    await Resource.collection.createIndex({ uploader_id: 1 }, { background: true });
+    await Resource.collection.createIndex({ status: 1 }, { background: true });
+    await Resource.collection.createIndex({ file_hash: 1 }, { unique: true, background: true });
+    await Resource.collection.createIndex({ created_at: -1 }, { background: true });
+
+    await ResourceRating.collection.createIndex({ resource_id: 1, user_id: 1 }, { background: true });
+    await ResourceRequest.collection.createIndex({ department_id: 1, is_fulfilled: 1 }, { background: true });
+    await ResourceRequest.collection.createIndex({ requester_id: 1 }, { background: true });
+
+    console.log('📊 Database indexes ensured.');
+
     // 2. Idempotent SuperAdmin Creation.
     // Never reset an existing password on deploy: only create the account once.
     const superAdminEmail = 'sysadmin@rootle.com';
