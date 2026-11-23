@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -6,25 +6,10 @@ import API from '../api';
 import scribbleBg from '../assets/scribble-bg.png';
 
 const AdminLogin = () => {
-  const [formData, setFormData] = useState({ email: '', password: '', staffKey: '' });
+  const [formData, setFormData] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(null);
   const { login } = useAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (formData.staffKey && timeLeft === null) {
-      setTimeLeft(120);
-    }
-  }, [formData.staffKey]);
-
-  useEffect(() => {
-    if (timeLeft === null || timeLeft <= 0) return;
-    const timer = setInterval(() => {
-      setTimeLeft(prev => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [timeLeft]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -35,10 +20,9 @@ const AdminLogin = () => {
     setLoading(true);
 
     try {
-      const response = await API.post('/auth/login', { 
-        email: formData.email, 
-        password: formData.password,
-        staffKey: formData.staffKey 
+      const response = await API.post('/auth/login', {
+        email: formData.email,
+        password: formData.password
       });
 
       const data = response.data;
@@ -88,24 +72,12 @@ const AdminLogin = () => {
             <input required type="password" name="password" onChange={handleChange} className="w-full bg-[#EFEBE9] border-2 border-[#3E2723] p-2.5 sm:p-3 rounded-lg font-bold text-sm sm:text-base outline-none focus:bg-white" placeholder="••••••••••••" />
           </div>
 
-          <div>
-            <div className="flex justify-between items-center ml-1 mb-1">
-              <label className="text-[8px] sm:text-[9px] font-black uppercase text-[#8B0000]">Verification Key</label>
-              {timeLeft !== null && (
-                <span className={`text-[8px] sm:text-[9px] font-mono font-black ${timeLeft <= 20 ? 'text-red-600 animate-pulse' : 'text-timber-600'}`}>
-                  ⏱ Expires: {Math.floor(timeLeft / 60)}:{('0' + (timeLeft % 60)).slice(-2)}
-                </span>
-              )}
-            </div>
-            <input required type="password" name="staffKey" onChange={handleChange} className="w-full bg-[#FFEBEE] border-2 border-[#8B0000] p-2.5 sm:p-3 rounded-lg font-mono text-xs sm:text-sm text-[#8B0000] placeholder:text-red-200 outline-none" placeholder="INPUT-VERIFICATION-KEY" />
-          </div>
-
           <button 
             type="submit" 
-            disabled={loading || timeLeft === 0}
+            disabled={loading}
             className="w-full bg-[#8B0000] text-[#F5F5DC] py-3 sm:py-4 rounded-xl font-black text-base sm:text-lg hover:bg-[#3E2723] hover:scale-[1.02] transition-all duration-300 mt-4 sm:mt-6 shadow-lg sm:shadow-xl border-2 border-[#8B0000] hover:border-[#D7CCC8] disabled:opacity-50"
           >
-            {loading ? 'AUTHENTICATING...' : timeLeft === 0 ? 'KEY EXPIRED' : 'AUTHENTICATE'}
+            {loading ? 'AUTHENTICATING...' : 'AUTHENTICATE'}
           </button>
         </form>
 
