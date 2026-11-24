@@ -137,7 +137,12 @@ const Dashboard = () => {
         fetchData();
       }
     } catch (err) {
-      showToast("RATING FAILED", "error");
+      // 403 = user hasn't downloaded the document yet
+      if (err.response && err.response.status === 403) {
+        showToast(err.response.data?.message || "Download the document before rating it.", "error");
+      } else {
+        showToast("RATING FAILED", "error");
+      }
     }
   };
 
@@ -298,6 +303,7 @@ const Dashboard = () => {
               const isPending = item.status === 'pending';
               const downloadCount = item.download_count ?? item.downloadCount ?? 0;
               const avgRating = item.average_rating ?? item.averageRating ?? 0;
+              const hasDownloaded = item.has_downloaded ?? false;
               const createdAt = item.created_at || item.createdAt;
               const uploaderName = item.uploader_name || item.uploaderName || 'Scholar';
 
@@ -336,7 +342,14 @@ const Dashboard = () => {
 
                   {!isPending && (
                     <div className="mt-2 scale-90 origin-left sm:scale-100">
-                      <RatingSystem currentRating={avgRating} onRate={(val) => handleRate(itemId, val)} />
+                      {hasDownloaded ? (
+                        <RatingSystem currentRating={avgRating} onRate={(val) => handleRate(itemId, val)} />
+                      ) : (
+                        <div className="flex items-center gap-1 text-[9px] text-timber-500 font-black mt-1">
+                          <span>⬇️</span>
+                          <span>Download to rate</span>
+                        </div>
+                      )}
                     </div>
                   )}
 

@@ -1,6 +1,7 @@
 const Resource = require('../models/Resource');
 const ResourceRequest = require('../models/ResourceRequest');
 const ResourceRating = require('../models/ResourceRating');
+const UserResourceDownload = require('../models/UserResourceDownload');
 const User = require('../models/User');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -180,6 +181,14 @@ exports.getAllResources = async (req, res) => {
             ratingsByResource[rating.resource_id].push(rating.rating_value);
         });
 
+        // Fetch which of these resources the current user has downloaded at least once.
+        // This lets the frontend disable rating until the user downloads the document.
+        const userDownloads = await UserResourceDownload.find({
+            user_id: req.user.id,
+            resource_id: { $in: resourceIds }
+        });
+        const downloadedResourceIds = new Set(userDownloads.map((d) => d.resource_id.toString()));
+
         const formattedResources = resources.map((resItem) => {
             const itemRatings = ratingsByResource[resItem._id] || [];
             const avgRating = itemRatings.length > 0
@@ -190,7 +199,8 @@ exports.getAllResources = async (req, res) => {
                 ...resItem.toObject(),
                 uploader_name: resItem.uploader_id?.full_name,
                 department_name: resItem.department_id?.name,
-                average_rating: avgRating
+                average_rating: avgRating,
+                has_downloaded: downloadedResourceIds.has(resItem._id.toString())
             };
         });
 
@@ -305,6 +315,18 @@ exports.rateResource = async (req, res) => {
         if (!await Resource.exists({ _id: resourceId, status: 'approved' })) {
             return res.status(404).json({ message: "Resource not found." });
         }
+
+        // 🔒 Only allow rating if the user has downloaded this document at least once.
+        const hasDownloaded = await UserResourceDownload.exists({
+            user_id: req.user.id,
+            resource_id: resourceId
+        });
+        if (!hasDownloaded) {
+            return res.status(403).json({
+                message: "You must download this document before you can rate it."
+            });
+        }
+
         await ResourceRating.findOneAndUpdate(
             { resource_id: resourceId, user_id: req.user.id },
             { rating_value: numericRating },
@@ -414,6 +436,15 @@ exports.incrementDownload = async (req, res) => {
             { new: true }
         );
         if (!updated) return res.status(404).json({ message: "Resource not found." });
+
+        // Record that this user has downloaded this resource (at least once).
+        // Upsert so repeat downloads don't create duplicate rows.
+        await UserResourceDownload.findOneAndUpdate(
+            { user_id: req.user.id, resource_id: req.params.id },
+            { $set: { downloaded_at: new Date() } },
+            { upsert: true, new: true }
+        );
+
         res.json({ message: "Counted." });
     } catch (err) {
         res.status(500).json({ message: "Error" });
